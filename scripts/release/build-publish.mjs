@@ -675,8 +675,8 @@ async function main() {
   await ensureEmptyDir(OUT_DIR)
   await fs.mkdir(path.dirname(releaseDir), { recursive: true })
 
-  console.log(`[publish] build core dist… (${name}@${version} ${commit})`)
-  run('npm run build', { cwd: ROOT })
+	  console.log(`[publish] build core dist… (${name}@${version} ${commit})`)
+	  run('pnpm run build', { cwd: ROOT })
 
   console.log('[publish] stage release dir…')
   await ensureEmptyDir(releaseDir)

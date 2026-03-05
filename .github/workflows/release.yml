@@ -25,24 +25,28 @@ jobs:
         uses: actions/setup-node@v4
         with:
           # noinspection UndefinedParamsPresent
-          node-version: 20
+          node-version: 24
           # noinspection UndefinedParamsPresent
-          cache: npm
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install
-        run: npm ci
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.30.2 --activate
+          pnpm install --frozen-lockfile
 
       - name: Install zip (Linux)
         run: sudo apt-get update && sudo apt-get install -y zip
 
       - name: Test
-        run: npm test
+        run: pnpm test
 
       - name: Lint
-        run: npm run lint
+        run: pnpm run lint
 
       - name: Build publish artifacts
-        run: npm run build:publish
+        run: pnpm run build:publish
 
       - name: Read version
         id: meta

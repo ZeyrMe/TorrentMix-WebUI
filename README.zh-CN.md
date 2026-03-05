@@ -109,13 +109,14 @@ node deploy/sidecar/updater.mjs
 
 ## 本地开发
 
-**环境要求**：Node.js 20+，npm 10+
+**环境要求**：Node.js 20+（运行测试需 Node.js 22.6+，CI 使用 Node.js 24），pnpm 10+（推荐通过 Corepack）
 
 ```bash
 git clone https://github.com/YunFeng86/TorrentMix-WebUI.git
 cd TorrentMix-WebUI
-npm install
-npm run dev
+corepack enable
+pnpm install
+pnpm dev
 ```
 
 Vite 开发代理已预配置（见 [vite.config.ts](vite.config.ts)）：
@@ -128,18 +129,18 @@ Transmission  /transmission/*  → http://localhost:9091
 ### 可用命令
 
 ```bash
-npm run dev           # 启动开发服务器
-npm run build         # 生产构建（静态资源）
-npm run build:publish # 多产物构建（CI/发版用）
-npm run test          # 运行测试套件
-npm run lint          # ESLint 检查
-npm run preview       # 本地预览生产构建
+pnpm dev           # 启动开发服务器
+pnpm build         # 生产构建（静态资源）
+pnpm build:publish # 多产物构建（CI/发版用）
+pnpm test          # 运行测试套件（Node.js 22.6+）
+pnpm lint          # ESLint 检查
+pnpm preview       # 本地预览生产构建
 ```
 
 ### 多产物构建
 
 ```bash
-npm run build:publish
+pnpm build:publish
 ```
 
 输出至 `artifacts/publish/`：
@@ -171,7 +172,7 @@ artifacts/publish/
 欢迎 PR 和 Issue！提交前请：
 
 1. 阅读 [Claude.md](Claude.md) 了解架构约定（Adapter / Network / State / View 四层边界）
-2. 确保 `npm run lint` 和 `npm test` 均通过
+2. 确保 `pnpm lint` 和 `pnpm test` 均通过
 3. Commit 信息遵循 [Conventional Commits](https://www.conventionalcommits.org/) 格式（如 `feat:`、`fix:`）
 4. UI 变更请附截图或 GIF
 

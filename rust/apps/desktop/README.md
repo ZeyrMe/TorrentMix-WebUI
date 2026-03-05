@@ -15,7 +15,7 @@ The desktop app bundles the same `gateway` crate as the Standalone Service, bind
 **1. Build the frontend:**
 
 ```bash
-npm run build
+pnpm build
 ```
 
 **2. Run the desktop app:**

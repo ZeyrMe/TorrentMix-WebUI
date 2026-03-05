@@ -109,13 +109,14 @@ Download `dist.zip` from Releases, extract it into the qBittorrent or Transmissi
 
 ## Local Development
 
-**Requirements:** Node.js 20+, npm 10+
+**Requirements:** Node.js 20+ (tests require Node.js 22.6+, CI uses Node.js 24), pnpm 10+ (via Corepack recommended)
 
 ```bash
 git clone https://github.com/YunFeng86/TorrentMix-WebUI.git
 cd TorrentMix-WebUI
-npm install
-npm run dev
+corepack enable
+pnpm install
+pnpm dev
 ```
 
 Vite dev proxy is pre-configured in [vite.config.ts](vite.config.ts):
@@ -128,18 +129,18 @@ Transmission  /transmission/*  → http://localhost:9091
 ### Scripts
 
 ```bash
-npm run dev           # Start dev server
-npm run build         # Production build (static assets)
-npm run build:publish # Multi-artifact build for releases
-npm run test          # Run test suite
-npm run lint          # ESLint
-npm run preview       # Preview production build locally
+pnpm dev           # Start dev server
+pnpm build         # Production build (static assets)
+pnpm build:publish # Multi-artifact build for releases
+pnpm test          # Run test suite (Node.js 22.6+)
+pnpm lint          # ESLint
+pnpm preview       # Preview production build locally
 ```
 
 ### Release Build
 
 ```bash
-npm run build:publish
+pnpm build:publish
 ```
 
 Outputs to `artifacts/publish/`:
@@ -171,7 +172,7 @@ Push a tag (e.g. `v0.1.0`) to trigger:
 PRs and issues are welcome! Before submitting:
 
 1. Read [Claude.md](Claude.md) for architecture conventions (Adapter / Network / State / View layer boundaries)
-2. Make sure `npm run lint` and `npm test` pass
+2. Make sure `pnpm lint` and `pnpm test` pass
 3. Follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, etc.)
 4. Include screenshots or GIFs for UI changes
 

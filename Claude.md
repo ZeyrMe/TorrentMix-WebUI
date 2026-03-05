@@ -353,10 +353,10 @@ src/
         content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' [backend-origin]">
   ```
 - **本地化依赖**: 避免 CDN 依赖，所有资源本地打包
-  ```bash
-  # 构建时将所有依赖打包到本地
-  npm run build  # 生成完全自包含的静态文件
-  ```
+	  ```bash
+	  # 构建时将所有依赖打包到本地
+	  pnpm build  # 生成完全自包含的静态文件
+	  ```
 - **静态部署限制**: WebUI 需要与后端 API 通信，必须解决 CORS
 - **解决方案**:
   - 使用 Docker 部署时的内网代理

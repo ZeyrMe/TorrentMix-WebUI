@@ -3,11 +3,11 @@
 FROM node:20-alpine AS build-ui
 WORKDIR /app
 
-COPY package.json package-lock.json ./
-RUN npm ci
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN corepack enable && corepack prepare pnpm@10.30.2 --activate && pnpm install --frozen-lockfile
 
 COPY . .
-RUN npm run build
+RUN pnpm run build
 
 
 FROM rust:1.78-alpine AS build-server

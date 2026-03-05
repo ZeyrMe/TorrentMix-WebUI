@@ -85,7 +85,7 @@ fn resolve_static_dir() -> Result<PathBuf> {
   }
 
   Err(anyhow!(
-    "找不到前端静态资源目录：请先运行 `npm run build` 生成 dist/，或设置 STATIC_DIR"
+    "找不到前端静态资源目录：请先运行 `pnpm build` 生成 dist/，或设置 STATIC_DIR"
   ))
 }
 
@@ -115,4 +115,3 @@ fn ensure_config_file(path: &PathBuf) -> Result<()> {
     .with_context(|| format!("write config: {}", path.display()))?;
   Ok(())
 }
-

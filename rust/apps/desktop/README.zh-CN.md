@@ -15,7 +15,7 @@
 **1. 构建前端：**
 
 ```bash
-npm run build
+pnpm build
 ```
 
 **2. 运行桌面端：**
