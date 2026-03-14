@@ -11,6 +11,12 @@ The **Standalone Service** turns the WebUI into a self-contained same-origin gat
 - Provides a server-switcher panel with pre-configured credentials and latency display
 - Stores the server catalog in an encrypted SQLCipher database and supports in-browser configuration edits
 
+**Runtime semantics:**
+
+- Server switching is tracked through the `tm_server_id` cookie; invalid or removed selections automatically fall back to the current default server.
+- qBittorrent proxy traffic forces one re-login retry after a 403 response.
+- Saving a new server catalog clears cached qB sessions so later proxy requests use the updated configuration.
+
 ## Configuration
 
 The service stores runtime configuration in an encrypted SQLCipher database at `STANDALONE_DB` (default: `/config/catalog.db`). The database contains the default server selection, server metadata, usernames, and passwords.

@@ -874,19 +874,37 @@ async fn read_body_bytes(body: Body, limit: usize) -> std::result::Result<Vec<u8
 
 #[cfg(test)]
 mod tests {
-  use std::{collections::HashMap, path::Path, sync::{Arc, Mutex}};
+  use std::{
+    collections::HashMap,
+    net::SocketAddr,
+    path::Path,
+    sync::{
+      atomic::{AtomicUsize, Ordering},
+      Arc, Mutex,
+    },
+    time::Duration,
+  };
 
-  use anyhow::Result;
-  use axum::{body::{to_bytes, Body}, http::{Request, StatusCode}};
+  use anyhow::{Context, Result};
+  use axum::{
+    body::{to_bytes, Body},
+    http::{header, Request, StatusCode},
+    Router,
+  };
   use tempfile::tempdir;
+  use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::TcpListener,
+  };
   use tower::ServiceExt;
+  use url::Url;
 
   use crate::{
-    catalog::{BackendType, CatalogConfig, ServerConfig},
+    catalog::{BackendType, CatalogConfig, ServerConfig, COOKIE_SELECTED_SERVER},
     key::{OsKeyProvider, RuntimeFlavor},
   };
 
-  use super::{build_router, build_state_with_provider};
+  use super::{build_router, build_state_with_provider, AppState};
 
   #[derive(Clone, Default)]
   struct MemoryOsKeyProvider {
@@ -911,6 +929,179 @@ mod tests {
         .insert(db_path.display().to_string(), secret.to_string());
       Ok(())
     }
+  }
+
+  #[derive(Clone, Default)]
+  struct MockTransmissionState {
+    requests: Arc<Mutex<Vec<Option<String>>>>,
+  }
+
+  #[derive(Clone, Default)]
+  struct MockQbitState {
+    login_count: Arc<AtomicUsize>,
+    cookies: Arc<Mutex<Vec<Option<String>>>>,
+  }
+
+  async fn spawn_test_server<F, Fut>(handler: F) -> Result<Url>
+  where
+    F: Fn(String) -> Fut + Send + Sync + 'static,
+    Fut: std::future::Future<Output = String> + Send + 'static,
+  {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).await?;
+    let addr: SocketAddr = listener.local_addr()?;
+    let handler = Arc::new(handler);
+    tokio::spawn(async move {
+      loop {
+        let Ok((mut stream, _addr)) = listener.accept().await else {
+          break;
+        };
+        let handler = handler.clone();
+        tokio::spawn(async move {
+          let mut buf = Vec::new();
+          let mut chunk = [0u8; 2048];
+
+          loop {
+            match stream.read(&mut chunk).await {
+              Ok(0) => break,
+              Ok(n) => {
+                buf.extend_from_slice(&chunk[..n]);
+                if buf.windows(4).any(|window| window == b"\r\n\r\n") {
+                  break;
+                }
+              }
+              Err(_) => return,
+            }
+          }
+
+          let req = String::from_utf8_lossy(&buf).to_string();
+          let resp = handler(req).await;
+          let _ = stream.write_all(resp.as_bytes()).await;
+          let _ = stream.shutdown().await;
+        });
+      }
+    });
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    Ok(Url::parse(&format!("http://127.0.0.1:{}", addr.port()))?)
+  }
+
+  async fn spawn_transmission_upstream(name: &'static str) -> Result<(Url, MockTransmissionState)> {
+    let state = MockTransmissionState::default();
+    let shared = state.clone();
+    let url = spawn_test_server(move |req| {
+      let shared = shared.clone();
+      async move {
+        let auth = parse_header(&req, "authorization");
+        shared.requests.lock().expect("lock").push(auth);
+        http_response(StatusCode::OK, &[], name)
+      }
+    })
+    .await?;
+    Ok((url, state))
+  }
+
+  async fn spawn_qbit_upstream() -> Result<(Url, MockQbitState)> {
+    let state = MockQbitState::default();
+    let login_state = state.clone();
+    let proxy_state = state.clone();
+    let url = spawn_test_server(move |req| {
+      let login_state = login_state.clone();
+      let proxy_state = proxy_state.clone();
+      async move {
+        let path = parse_path(&req);
+        if path == "/api/v2/auth/login" {
+          login_state.login_count.fetch_add(1, Ordering::SeqCst);
+          return http_response(
+            StatusCode::OK,
+            &[("Set-Cookie", "SID=fresh; HttpOnly")],
+            "Ok.",
+          );
+        }
+
+        let cookie = parse_header(&req, "cookie");
+        proxy_state.cookies.lock().expect("lock").push(cookie.clone());
+        if cookie.as_deref() == Some("SID=fresh") {
+          http_response(StatusCode::OK, &[], "fresh")
+        } else {
+          http_response(StatusCode::FORBIDDEN, &[], "forbidden")
+        }
+      }
+    })
+    .await?;
+    Ok((url, state))
+  }
+
+  fn parse_header(req: &str, name: &str) -> Option<String> {
+    let prefix = format!("{}:", name.to_ascii_lowercase());
+    req.lines().find_map(|line| {
+      let trimmed = line.trim();
+      let lower = trimmed.to_ascii_lowercase();
+      if lower.starts_with(&prefix) {
+        trimmed.split_once(':').map(|(_, value)| value.trim().to_string())
+      } else {
+        None
+      }
+    })
+  }
+
+  fn parse_path(req: &str) -> String {
+    req.lines()
+      .next()
+      .and_then(|line| line.split_whitespace().nth(1))
+      .unwrap_or("/")
+      .to_string()
+  }
+
+  fn http_response(status: StatusCode, headers: &[(&str, &str)], body: &str) -> String {
+    let status_line = format!(
+      "HTTP/1.1 {} {}\r\n",
+      status.as_u16(),
+      status.canonical_reason().unwrap_or("OK")
+    );
+    let mut out = String::new();
+    out.push_str(&status_line);
+    out.push_str(&format!("Content-Length: {}\r\n", body.as_bytes().len()));
+    out.push_str("Connection: close\r\n");
+    for (name, value) in headers {
+      out.push_str(name);
+      out.push_str(": ");
+      out.push_str(value);
+      out.push_str("\r\n");
+    }
+    out.push_str("\r\n");
+    out.push_str(body);
+    out
+  }
+
+  async fn new_test_state() -> Result<(tempfile::TempDir, std::path::PathBuf, AppState)> {
+    let runtime = tempdir()?;
+    let static_dir = runtime.path().join("dist");
+    std::fs::create_dir_all(&static_dir)?;
+    std::fs::write(static_dir.join("index.html"), "ok")?;
+
+    let db_path = runtime.path().join("catalog.db");
+    let provider = Arc::new(MemoryOsKeyProvider::default());
+    let state = build_state_with_provider(
+      RuntimeFlavor::StandaloneService,
+      db_path,
+      provider,
+      Some("integration-secret".to_string()),
+    )?;
+
+    Ok((runtime, static_dir, state))
+  }
+
+  async fn apply_catalog(state: &AppState, config: CatalogConfig) -> Result<()> {
+    state.store.save_config(config)?;
+    let catalog = state.store.load_catalog()?;
+    *state.catalog.write().await = catalog;
+    Ok(())
+  }
+
+  async fn send(app: &Router, req: Request<Body>) -> Result<axum::response::Response> {
+    tokio::time::timeout(Duration::from_secs(5), app.clone().oneshot(req))
+      .await
+      .context("gateway test request timed out")?
+      .map_err(Into::into)
   }
 
   #[tokio::test]
@@ -1021,6 +1212,256 @@ mod tests {
       &to_bytes(read_after_clear_resp.into_body(), usize::MAX).await?,
     )?;
     assert_eq!(read_after_clear_json["servers"][0]["hasPassword"], serde_json::Value::Bool(false));
+    Ok(())
+  }
+
+  #[tokio::test]
+  async fn status_select_and_proxy_share_effective_server_selection() -> Result<()> {
+    let (_runtime, static_dir, state) = new_test_state().await?;
+    let (primary_url, primary_state) = spawn_transmission_upstream("primary").await?;
+    let (secondary_url, secondary_state) = spawn_transmission_upstream("secondary").await?;
+
+    apply_catalog(
+      &state,
+      CatalogConfig {
+        default_server_id: "primary".to_string(),
+        servers: vec![
+          ServerConfig {
+            id: "primary".to_string(),
+            name: "Primary".to_string(),
+            kind: BackendType::Trans,
+            base_url: primary_url.to_string(),
+            username: "a".to_string(),
+            password: "a".to_string(),
+          },
+          ServerConfig {
+            id: "secondary".to_string(),
+            name: "Secondary".to_string(),
+            kind: BackendType::Trans,
+            base_url: secondary_url.to_string(),
+            username: "b".to_string(),
+            password: "b".to_string(),
+          },
+        ],
+      },
+    )
+    .await?;
+
+    let app = build_router(state.clone(), static_dir);
+
+    let status_resp = send(&app, Request::builder().uri("/__standalone__/status").body(Body::empty())?).await?;
+    assert_eq!(status_resp.status(), StatusCode::OK);
+    let status_json: serde_json::Value = serde_json::from_slice(&to_bytes(status_resp.into_body(), usize::MAX).await?)?;
+    assert_eq!(status_json["selectedId"], serde_json::Value::String("primary".to_string()));
+
+    let invalid_cookie_resp = send(
+      &app,
+      Request::builder()
+        .uri("/__standalone__/status")
+        .header(header::COOKIE, format!("{COOKIE_SELECTED_SERVER}=missing"))
+        .body(Body::empty())?,
+    )
+    .await?;
+    let invalid_cookie_json: serde_json::Value = serde_json::from_slice(
+      &to_bytes(invalid_cookie_resp.into_body(), usize::MAX).await?,
+    )?;
+    assert_eq!(invalid_cookie_json["selectedId"], serde_json::Value::String("primary".to_string()));
+
+    let select_resp = send(
+      &app,
+      Request::builder()
+        .method("POST")
+        .uri("/__standalone__/select")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"id":"secondary"}"#))?,
+    )
+    .await?;
+    assert_eq!(select_resp.status(), StatusCode::OK);
+    let set_cookie = select_resp
+      .headers()
+      .get(header::SET_COOKIE)
+      .and_then(|value| value.to_str().ok())
+      .unwrap_or("");
+    assert!(set_cookie.contains("tm_server_id=secondary"));
+
+    let selected_status_resp = send(
+      &app,
+      Request::builder()
+        .uri("/__standalone__/status")
+        .header(header::COOKIE, format!("{COOKIE_SELECTED_SERVER}=secondary"))
+        .body(Body::empty())?,
+    )
+    .await?;
+    let selected_status_json: serde_json::Value = serde_json::from_slice(
+      &to_bytes(selected_status_resp.into_body(), usize::MAX).await?,
+    )?;
+    assert_eq!(selected_status_json["selectedId"], serde_json::Value::String("secondary".to_string()));
+
+    let proxy_resp = send(
+      &app,
+      Request::builder()
+        .uri("/transmission/rpc")
+        .header(header::COOKIE, format!("{COOKIE_SELECTED_SERVER}=secondary"))
+        .body(Body::empty())?,
+    )
+    .await?;
+    assert_eq!(proxy_resp.status(), StatusCode::OK);
+    let proxy_body = to_bytes(proxy_resp.into_body(), usize::MAX).await?;
+    assert_eq!(&proxy_body[..], b"secondary");
+    assert!(primary_state.requests.lock().expect("lock").is_empty());
+    assert_eq!(
+      secondary_state.requests.lock().expect("lock").as_slice(),
+      &[Some("Basic Yjpi".to_string())]
+    );
+
+    let unknown_select_resp = send(
+      &app,
+      Request::builder()
+        .method("POST")
+        .uri("/__standalone__/select")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"id":"unknown"}"#))?,
+    )
+    .await?;
+    assert_eq!(unknown_select_resp.status(), StatusCode::BAD_REQUEST);
+
+    Ok(())
+  }
+
+  #[tokio::test]
+  async fn config_update_clears_qbit_sessions_and_removed_selection_falls_back() -> Result<()> {
+    let (_runtime, static_dir, state) = new_test_state().await?;
+    let (primary_url, primary_state) = spawn_transmission_upstream("primary").await?;
+    let (secondary_url, _secondary_state) = spawn_transmission_upstream("secondary").await?;
+
+    apply_catalog(
+      &state,
+      CatalogConfig {
+        default_server_id: "primary".to_string(),
+        servers: vec![
+          ServerConfig {
+            id: "primary".to_string(),
+            name: "Primary".to_string(),
+            kind: BackendType::Trans,
+            base_url: primary_url.to_string(),
+            username: "a".to_string(),
+            password: "a".to_string(),
+          },
+          ServerConfig {
+            id: "secondary".to_string(),
+            name: "Secondary".to_string(),
+            kind: BackendType::Trans,
+            base_url: secondary_url.to_string(),
+            username: "b".to_string(),
+            password: "b".to_string(),
+          },
+        ],
+      },
+    )
+    .await?;
+
+    {
+      let session = state.qbit.session("primary").await;
+      session.lock().await.cookie = Some("SID=primary".to_string());
+      let session = state.qbit.session("secondary").await;
+      session.lock().await.cookie = Some("SID=secondary".to_string());
+    }
+    assert_eq!(state.qbit.sessions.lock().await.len(), 2);
+
+    let app = build_router(state.clone(), static_dir);
+    let update_resp = send(
+      &app,
+      Request::builder()
+        .method("POST")
+        .uri("/__standalone__/config")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+          serde_json::json!({
+            "defaultServerId": "primary",
+            "servers": [
+              {
+                "id": "primary",
+                "name": "Primary",
+                "type": "trans",
+                "baseUrl": primary_url.to_string(),
+                "username": "a",
+                "password": "a"
+              }
+            ]
+          })
+          .to_string(),
+        ))?,
+    )
+    .await?;
+    assert_eq!(update_resp.status(), StatusCode::OK);
+    assert!(state.qbit.sessions.lock().await.is_empty());
+
+    let fallback_status_resp = send(
+      &app,
+      Request::builder()
+        .uri("/__standalone__/status")
+        .header(header::COOKIE, format!("{COOKIE_SELECTED_SERVER}=secondary"))
+        .body(Body::empty())?,
+    )
+    .await?;
+    let fallback_status_json: serde_json::Value = serde_json::from_slice(
+      &to_bytes(fallback_status_resp.into_body(), usize::MAX).await?,
+    )?;
+    assert_eq!(fallback_status_json["selectedId"], serde_json::Value::String("primary".to_string()));
+
+    let proxy_resp = send(
+      &app,
+      Request::builder()
+        .uri("/transmission/rpc")
+        .header(header::COOKIE, format!("{COOKIE_SELECTED_SERVER}=secondary"))
+        .body(Body::empty())?,
+    )
+    .await?;
+    assert_eq!(proxy_resp.status(), StatusCode::OK);
+    let proxy_body = to_bytes(proxy_resp.into_body(), usize::MAX).await?;
+    assert_eq!(&proxy_body[..], b"primary");
+    assert_eq!(
+      primary_state.requests.lock().expect("lock").last().cloned(),
+      Some(Some("Basic YTph".to_string()))
+    );
+
+    Ok(())
+  }
+
+  #[tokio::test]
+  async fn qbit_proxy_forces_reauth_once_after_forbidden() -> Result<()> {
+    let (_runtime, static_dir, state) = new_test_state().await?;
+    let (qbit_url, qbit_state) = spawn_qbit_upstream().await?;
+
+    apply_catalog(
+      &state,
+      CatalogConfig {
+        default_server_id: "home-qb".to_string(),
+        servers: vec![ServerConfig {
+          id: "home-qb".to_string(),
+          name: "Home qB".to_string(),
+          kind: BackendType::Qbit,
+          base_url: qbit_url.to_string(),
+          username: "admin".to_string(),
+          password: "secret".to_string(),
+        }],
+      },
+    )
+    .await?;
+
+    let session = state.qbit.session("home-qb").await;
+    session.lock().await.cookie = Some("SID=stale".to_string());
+
+    let app = build_router(state, static_dir);
+    let resp = send(&app, Request::builder().uri("/api/v2/test").body(Body::empty())?).await?;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = to_bytes(resp.into_body(), usize::MAX).await?;
+    assert_eq!(&body[..], b"fresh");
+    assert_eq!(qbit_state.login_count.load(Ordering::SeqCst), 1);
+    assert_eq!(
+      qbit_state.cookies.lock().expect("lock").as_slice(),
+      &[Some("SID=stale".to_string()), Some("SID=fresh".to_string())]
+    );
     Ok(())
   }
 

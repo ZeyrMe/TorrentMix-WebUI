@@ -12,6 +12,12 @@
 | `apps/standalone-service` | **Standalone Service** 部署形态的无头二进制 |
 | `apps/desktop` | Tauri 桌面端 — 在 `127.0.0.1:0` 启动 `gateway`，并将 WebView 指向该地址 |
 
+## Runtime 约束
+
+- 服务器选择是浏览器级语义：优先使用有效的 `tm_server_id` cookie，失效时回退到当前默认服务器。
+- qBittorrent 代理请求遇到 403 时，runtime 会强制重新登录并只重试一次。
+- 发布前流程会对共享 `gateway` runtime 运行 Rust 校验，避免只验证前端静态产物。
+
 ## 构建
 
 从仓库根目录执行：

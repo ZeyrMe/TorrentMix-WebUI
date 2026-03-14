@@ -11,6 +11,12 @@
 - 支持 Standalone 的服务器切换面板与可视化配置编辑器
 - 将运行时目录保存到加密 SQLCipher 数据库，前端不会直接接触原始凭据
 
+**运行时语义：**
+
+- Desktop 与 Standalone Service 共享同一套 `gateway` 选服与代理语义。
+- 服务器选择仍由 `tm_server_id` cookie 驱动；无效 cookie 会回退到默认服务器。
+- qBittorrent 代理请求遇到 403 时，runtime 会强制重新登录并只重试一次。
+
 ## 开发运行
 
 **1. 构建前端：**

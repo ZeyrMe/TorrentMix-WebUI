@@ -11,6 +11,12 @@ The desktop app bundles the same `gateway` crate as the Standalone Service, bind
 - Supports the Standalone server-switcher and visual config editor
 - Stores the runtime catalog in an encrypted SQLCipher database without exposing raw credentials to the frontend
 
+**Runtime semantics:**
+
+- Desktop shares the same `gateway` selection and proxy behavior as Standalone Service.
+- Server choice is still driven by the `tm_server_id` cookie, with fallback to the default server when that cookie is invalid.
+- qBittorrent proxy traffic forces one re-login retry after a 403 response.
+
 ## Development
 
 **1. Build the frontend:**
