@@ -47,6 +47,13 @@ const torrentStore = useTorrentStore()
 const authStore = useAuthStore()
 const backendStore = useBackendStore()
 const uiOverlay = useUiOverlay()
+const windowWidth = ref(window.innerWidth)
+const isMobile = computed(() => windowWidth.value < 768)
+
+function normalizeViewModeForViewport(viewMode: 'list' | 'card') {
+  if (isMobile.value) return 'card'
+  return viewMode === 'card' ? 'list' : viewMode
+}
 
 // 确保在访问 adapter 之前已初始化
 if (!backendStore.isInitialized) {
@@ -91,8 +98,6 @@ const {
 const capabilities = computed(() => backendStore.capabilities)
 
 const sidebarCollapsed = ref(false)
-const isMobile = ref(window.innerWidth < 768)
-const windowWidth = ref(window.innerWidth)
 const tableScrollRef = ref<HTMLElement | null>(null)
 const mobileScrollRef = ref<HTMLElement | null>(null)
 
@@ -206,11 +211,6 @@ const showDetailPanel = ref(false)
 const selectedTorrent = ref<UnifiedTorrent | null>(null)
 const detailPanelHeight = ref(350)
 const hasHydratedTorrentList = ref(false)
-
-function normalizeViewModeForViewport(viewMode: 'list' | 'card') {
-  if (isMobile.value) return 'card'
-  return viewMode === 'card' ? 'list' : viewMode
-}
 
 function syncSelectedTorrentFromController(hash: string | null) {
   if (!hash) {
@@ -391,12 +391,10 @@ const handleResize = () => {
     const w = pendingResizeWidth
     if (windowWidth.value !== w) windowWidth.value = w
 
-    const nextMobile = w < 768
-    if (isMobile.value !== nextMobile) isMobile.value = nextMobile
     setViewMode(normalizeViewModeForViewport(uiState.viewMode))
 
     // 移动端自动折叠侧边栏
-    if (nextMobile) sidebarCollapsed.value = true
+    if (isMobile.value) sidebarCollapsed.value = true
 
   })
 }

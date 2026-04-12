@@ -381,3 +381,47 @@ test('torrent controller: route sync preserves empty category, selected torrent,
     tab: 'trackers',
   })
 })
+
+test('torrent controller: normalizeViewMode can run during route initialization with viewport state ready', async () => {
+  setActivePinia(createPinia())
+
+  const backend = useBackendStore()
+  backend.setAdapter(
+    {
+      fetchList: async () => ({ torrents: new Map() }),
+    } as any,
+    { type: 'qbit', version: '5.0.0', major: 5, minor: 0, patch: 0 } as any,
+  )
+
+  const route = reactive({
+    query: {
+      view: 'list',
+    } as any,
+  })
+
+  const viewport = reactive({ isMobile: true })
+  let normalizeCalls = 0
+  let ctx!: ReturnType<typeof useTorrentContext>
+
+  assert.doesNotThrow(() => {
+    ctx = useTorrentContext({
+      route: route as any,
+      overlay: createOverlayMock() as any,
+      normalizeViewMode: (viewMode) => {
+        normalizeCalls++
+        if (viewport.isMobile) return 'card'
+        return viewMode === 'card' ? 'list' : viewMode
+      },
+    })
+  })
+
+  await nextTick()
+
+  assert.ok(normalizeCalls >= 1)
+  assert.equal(ctx.state.ui.viewMode, 'card')
+
+  viewport.isMobile = false
+  ctx.actions.setViewMode('card')
+
+  assert.equal(ctx.state.ui.viewMode, 'list')
+})
