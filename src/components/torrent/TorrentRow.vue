@@ -64,6 +64,23 @@ function handleContextMenu(e: MouseEvent) {
   emit('contextmenu', e, props.torrent.id)
 }
 
+function isNestedInteractiveTarget(event: KeyboardEvent) {
+  const target = event.target
+  const currentTarget = event.currentTarget
+  if (!(target instanceof HTMLElement) || !(currentTarget instanceof HTMLElement)) return false
+
+  const interactive = target.closest('button, input, select, textarea, a, [role="button"]')
+  return interactive !== null && interactive !== currentTarget
+}
+
+function handleRowKeydown(e: KeyboardEvent) {
+  if (e.key !== 'Enter' && e.key !== ' ') return
+  if (isNestedInteractiveTarget(e)) return
+  e.preventDefault()
+  e.stopPropagation()
+  emit('click', e)
+}
+
 type TorrentState = UnifiedTorrent['state']
 
 // 状态图标映射
@@ -131,7 +148,11 @@ const formatETA = (eta: number, progress: number, state: TorrentState): string =
     class="torrent-row cursor-pointer group flex items-center w-full min-w-0"
     :class="{ 'bg-blue-50 border-blue-200': selected }"
     :data-torrent-id="torrent.id"
+    role="button"
+    tabindex="0"
+    :aria-label="`查看种子 ${torrent.name}`"
     @click="$emit('click', $event)"
+    @keydown="handleRowKeydown"
     @contextmenu="handleContextMenu"
   >
     <!-- 选择器 -->
@@ -144,6 +165,7 @@ const formatETA = (eta: number, progress: number, state: TorrentState): string =
         type="checkbox"
         :checked="selected"
         @click="handleCheckboxClick"
+        :aria-label="`选择种子 ${torrent.name}`"
         class="w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500/20 focus:ring-offset-0 focus:ring-2 cursor-pointer transition-all duration-150"
       />
     </div>
@@ -168,7 +190,7 @@ const formatETA = (eta: number, progress: number, state: TorrentState): string =
             :text="torrent.name"
           />
           <div class="flex items-center gap-3 text-xs text-gray-500 mt-0.5">
-            <span class="font-mono">{{ formatBytes(torrent.size) }}</span>
+            <span class="font-mono font-tabular">{{ formatBytes(torrent.size) }}</span>
             <span class="hidden sm:inline">•</span>
             <span class="hidden sm:inline">比率 {{ torrent.ratio.toFixed(2) }}</span>
             <span class="hidden md:inline">•</span>
@@ -190,7 +212,7 @@ const formatETA = (eta: number, progress: number, state: TorrentState): string =
     >
       <div class="space-y-1">
         <div class="flex items-center justify-between">
-          <span class="text-xs font-mono text-gray-600">
+          <span class="text-xs font-mono font-tabular text-gray-600">
             {{ (torrent.progress * 100).toFixed(1) }}%
           </span>
           <span class="text-xs text-gray-500">
@@ -217,7 +239,7 @@ const formatETA = (eta: number, progress: number, state: TorrentState): string =
       :style="getFlexStyle('dlSpeed')"
       v-show="columnById['dlSpeed']?.visible ?? true"
     >
-      <div class="text-sm font-mono text-gray-900 whitespace-nowrap">
+      <div class="text-sm font-mono font-tabular text-gray-900 whitespace-nowrap">
         ↓ {{ formatSpeed(torrent.dlspeed) }}
       </div>
     </div>
@@ -229,7 +251,7 @@ const formatETA = (eta: number, progress: number, state: TorrentState): string =
       :style="getFlexStyle('upSpeed')"
       v-show="columnById['upSpeed']?.visible ?? true"
     >
-      <div class="text-sm font-mono text-gray-900 whitespace-nowrap">
+      <div class="text-sm font-mono font-tabular text-gray-900 whitespace-nowrap">
         ↑ {{ formatSpeed(torrent.upspeed) }}
       </div>
     </div>
@@ -241,7 +263,7 @@ const formatETA = (eta: number, progress: number, state: TorrentState): string =
       :style="getFlexStyle('eta')"
       v-show="columnById['eta']?.visible ?? true"
     >
-      <div class="text-sm font-mono text-gray-600">
+      <div class="text-sm font-mono font-tabular text-gray-600">
         {{ formatETA(torrent.eta, torrent.progress, torrent.state) }}
       </div>
     </div>
@@ -255,18 +277,22 @@ const formatETA = (eta: number, progress: number, state: TorrentState): string =
       <div class="flex items-center gap-1">
         <!-- 暂停/恢复切换 -->
         <button
+          type="button"
           @click.stop="emit('action', torrent.state === 'paused' ? 'resume' : 'pause', torrent.id)"
           class="p-1 hover:bg-gray-100 rounded"
           :title="torrent.state === 'paused' ? '开始' : '暂停'"
+          :aria-label="torrent.state === 'paused' ? '开始种子' : '暂停种子'"
         >
           <Icon :name="torrent.state === 'paused' ? 'play' : 'pause'" :size="14" />
         </button>
 
         <!-- 删除按钮 -->
         <button
+          type="button"
           @click.stop="emit('action', 'delete', torrent.id)"
           class="p-1 hover:bg-red-50 text-red-600 rounded"
           title="删除"
+          aria-label="删除种子"
         >
           <Icon name="trash-2" :size="14" />
         </button>

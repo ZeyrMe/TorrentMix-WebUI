@@ -128,7 +128,7 @@ onMounted(() => {
 
 <template>
   <div v-if="available" ref="rootRef" class="relative">
-    <button @click.stop="toggle" class="icon-btn" :title="buttonTitle">
+    <button type="button" @click.stop="toggle" class="icon-btn" :title="buttonTitle" :aria-label="buttonTitle">
       <Icon name="server" :size="16" />
     </button>
 
@@ -138,7 +138,7 @@ onMounted(() => {
     >
       <div class="px-3 py-2 text-xs font-medium text-gray-500 border-b border-gray-100 flex items-center justify-between gap-2">
         <span class="truncate">切换服务器</span>
-        <button class="icon-btn" title="刷新延迟" :disabled="loading" @click.stop="fetchStatus()">
+        <button type="button" class="icon-btn" title="刷新延迟" aria-label="刷新服务器延迟" :disabled="loading" @click.stop="fetchStatus()">
           <Icon name="refresh-cw" :size="14" :class="{ 'animate-spin': loading }" />
         </button>
       </div>
@@ -149,6 +149,7 @@ onMounted(() => {
 
       <template v-else>
         <button
+          type="button"
           v-for="s in status?.servers ?? []"
           :key="s.id"
           class="w-full text-left px-3 py-2 hover:bg-gray-50 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -171,7 +172,7 @@ onMounted(() => {
         </div>
 
         <div class="px-3 py-2 border-t border-gray-100">
-          <button class="btn w-full" :disabled="switching" @click.stop="openConfig">
+          <button type="button" class="btn w-full" :disabled="switching" @click.stop="openConfig">
             <Icon name="settings" :size="16" class="mr-2" />
             管理服务器
           </button>

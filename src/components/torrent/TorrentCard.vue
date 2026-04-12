@@ -11,6 +11,23 @@ defineEmits<{
   click: []
 }>()
 
+function isNestedInteractiveTarget(event: KeyboardEvent) {
+  const target = event.target
+  const currentTarget = event.currentTarget
+  if (!(target instanceof HTMLElement) || !(currentTarget instanceof HTMLElement)) return false
+
+  const interactive = target.closest('button, input, select, textarea, a, [role="button"]')
+  return interactive !== null && interactive !== currentTarget
+}
+
+function handleCardKeydown(e: KeyboardEvent) {
+  if (e.key !== 'Enter' && e.key !== ' ') return
+  if (isNestedInteractiveTarget(e)) return
+  e.preventDefault()
+  e.stopPropagation()
+  ;(e.currentTarget as HTMLElement).click()
+}
+
 // 处理复选框点击
 function handleCheckboxClick(e: Event) {
   e.stopPropagation()
@@ -64,9 +81,13 @@ const getStateText = (state: TorrentState) => {
 
 <template>
   <div
-    class="card p-4 cursor-pointer transition-all duration-150 hover:shadow-md active:scale-[0.98]"
+    class="card p-4 cursor-pointer transition-shadow duration-150 hover:shadow-md active:scale-[0.98]"
     :class="{ 'ring-2 ring-blue-200 border-blue-300': selected }"
+    role="button"
+    tabindex="0"
+    :aria-label="`查看种子 ${torrent.name}`"
     @click.stop="$emit('click')"
+    @keydown="handleCardKeydown"
   >
     <!-- 头部：名称和状态 -->
     <div class="flex items-start justify-between gap-3 mb-3">
@@ -75,6 +96,7 @@ const getStateText = (state: TorrentState) => {
         <input
           type="checkbox"
           :checked="selected"
+          :aria-label="`选择种子 ${torrent.name}`"
           class="w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500/20 focus:ring-offset-0 focus:ring-2 cursor-pointer"
         />
       </div>
@@ -101,10 +123,10 @@ const getStateText = (state: TorrentState) => {
                    :color="getStateColor(torrent.state)" :size="12" />
             <span class="ml-1" :class="`text-${getStateColor(torrent.state)}-500`">{{ getStateText(torrent.state) }}</span>
           </span>
-          <span class="text-xs text-gray-500 font-mono">
+          <span class="text-xs text-gray-500 font-mono font-tabular">
             {{ formatBytes(torrent.size) }}
           </span>
-          <span class="text-xs text-gray-500 font-mono" :title="getSwarmTitle(torrent)">
+          <span class="text-xs text-gray-500 font-mono font-tabular" :title="getSwarmTitle(torrent)">
             做种 {{ getSwarmTexts(torrent).seeds }} • 下载 {{ getSwarmTexts(torrent).peers }}
           </span>
         </div>
@@ -114,7 +136,7 @@ const getStateText = (state: TorrentState) => {
     <!-- 进度条 -->
     <div class="mb-3">
       <div class="flex items-center justify-between text-xs mb-1">
-        <span class="font-mono text-gray-600">{{ (torrent.progress * 100).toFixed(1) }}%</span>
+        <span class="font-mono font-tabular text-gray-600">{{ (torrent.progress * 100).toFixed(1) }}%</span>
         <span class="text-gray-500">{{ formatBytes(torrent.size * torrent.progress) }}</span>
       </div>
       <div class="progress-bar">
@@ -135,15 +157,15 @@ const getStateText = (state: TorrentState) => {
       <div class="flex items-center gap-3">
         <div class="flex items-center gap-1">
           <Icon name="download" color="blue" :size="12" />
-          <span class="font-mono text-gray-700">{{ formatSpeed(torrent.dlspeed) }}</span>
+          <span class="font-mono font-tabular text-gray-700">{{ formatSpeed(torrent.dlspeed) }}</span>
         </div>
         <div class="flex items-center gap-1">
           <Icon name="upload-cloud" color="cyan" :size="12" />
-          <span class="font-mono text-gray-700">{{ formatSpeed(torrent.upspeed) }}</span>
+          <span class="font-mono font-tabular text-gray-700">{{ formatSpeed(torrent.upspeed) }}</span>
         </div>
       </div>
 
-      <div class="text-gray-500 font-mono">
+      <div class="text-gray-500 font-mono font-tabular">
         比率 {{ torrent.ratio.toFixed(2) }}
       </div>
     </div>

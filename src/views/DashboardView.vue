@@ -1,22 +1,26 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, computed, watch, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useTorrentStore } from '@/store/torrent'
 import { useAuthStore } from '@/store/auth'
 import { useBackendStore } from '@/store/backend'
 import { usePolling } from '@/composables/usePolling'
 import { useTorrentContext, type TorrentAction } from '@/composables/useTorrentContext'
+import { useUiOverlay } from '@/composables/useUiOverlay'
 import { useTableColumns } from '@/composables/useTableColumns'
 import { TORRENT_TABLE_COLUMNS } from '@/composables/useTableColumns/configs'
 import { AuthError } from '@/api/client'
 import type { UnifiedTorrent } from '@/adapter/types'
 import type { AddTorrentParams } from '@/adapter/interface'
+import type { DashboardDetailTab } from '@/utils/dashboardRouteState'
 import TorrentRow from '@/components/torrent/TorrentRow.vue'
 import TorrentCard from '@/components/torrent/TorrentCard.vue'
 import AddTorrentDialog from '@/components/AddTorrentDialog.vue'
 import VirtualTorrentList from '@/components/VirtualTorrentList.vue'
 import VirtualTorrentCardList from '@/components/VirtualTorrentCardList.vue'
 import TorrentBottomPanel from '@/components/TorrentBottomPanel.vue'
+import DashboardSearchControl from '@/components/dashboard/DashboardSearchControl.vue'
+import DashboardStatusBar from '@/components/dashboard/DashboardStatusBar.vue'
 import ResizableTableHeader from '@/components/table/ResizableTableHeader.vue'
 import OverflowActionBar, { type OverflowActionItem } from '@/components/toolbar/OverflowActionBar.vue'
 import ColumnSettingsDialog from '@/components/ColumnSettingsDialog.vue'
@@ -27,7 +31,6 @@ import ToolsDialog from '@/components/ToolsDialog.vue'
 import FolderTree from '@/components/FolderTree.vue'
 import Icon from '@/components/Icon.vue'
 import TorrentContextMenu from '@/components/torrent/contextmenu/TorrentContextMenu.vue'
-import { formatSpeed, formatBytes } from '@/utils/format'
 import SafeText from '@/components/SafeText.vue'
 import QueueMenu from '@/components/toolbar/QueueMenu.vue'
 import ServerSwitchMenu from '@/components/toolbar/ServerSwitchMenu.vue'
@@ -39,31 +42,51 @@ const MOBILE_VIRTUAL_SCROLL_THRESHOLD = 80
 const TORRENT_ROW_ESTIMATED_HEIGHT = 60
 
 const router = useRouter()
+const route = useRoute()
 const torrentStore = useTorrentStore()
 const authStore = useAuthStore()
 const backendStore = useBackendStore()
+const uiOverlay = useUiOverlay()
 
 // 确保在访问 adapter 之前已初始化
 if (!backendStore.isInitialized) {
   throw new Error('[DashboardView] Backend not initialized. This should not happen after bootstrap.')
 }
 
-const torrentContext = useTorrentContext()
+const torrentContext = useTorrentContext({
+  router,
+  route,
+  normalizeViewMode: normalizeViewModeForViewport,
+})
+const { state, actions } = torrentContext
+const uiState = state.ui
+const { debouncedFilter, stateFilter, categoryFilter, tagFilter } = state.filters
 const {
-  adapter,
-  uiState,
-  debouncedFilter,
-  stateFilter,
-  categoryFilter,
-  tagFilter,
-  filteredTorrents,
   sortedTorrents,
-  toggleSelect,
-  toggleSortByColumn,
+  selectedCount,
+  selectedBadge,
+  isAllSelected,
+  contextMenuState,
+} = state.data
+const contextmenuState = contextMenuState
+const { selectedTorrentId: requestedDetailTorrentId, detailTab } = state.route
+const {
+  toggleSort: toggleSortByColumn,
   getSortIconForColumn,
-  refreshList,
+  select,
+  selectRange,
+  selectAllVisible,
+  openContextMenu,
+  closeContextMenu,
+  refresh: refreshList,
   runTorrentAction,
-} = torrentContext
+  runContextMenuAction,
+  runBatchSpeedLimit,
+  addTorrent,
+  setViewMode,
+  setSelectedTorrentId,
+  setDetailTab,
+} = actions
 
 const capabilities = computed(() => backendStore.capabilities)
 
@@ -170,8 +193,6 @@ const {
 
 // 添加种子对话框
 const showAddDialog = ref(false)
-const addLoading = ref(false)
-const addError = ref('')
 
 // 分类/标签管理对话框
 const showCategoryManage = ref(false)
@@ -180,50 +201,45 @@ const showColumnSettings = ref(false)
 const showBackendSettings = ref(false)
 const showToolsDialog = ref(false)
 
-// 右键菜单状态
-const contextmenuState = ref({
-  show: false,
-  x: 0,
-  y: 0,
-  hashes: [] as string[]
-})
-
-// 窄屏搜索：折叠为按钮，使用下拉 popover 展开
-const searchPopoverOpen = ref(false)
-const searchPopoverRef = ref<HTMLElement | null>(null)
-const searchInputRef = ref<HTMLInputElement | null>(null)
-
-async function openSearchPopover() {
-  searchPopoverOpen.value = true
-  await nextTick()
-  searchInputRef.value?.focus()
-}
-
-function closeSearchPopover() {
-  searchPopoverOpen.value = false
-}
-
-async function toggleSearchPopover() {
-  if (searchPopoverOpen.value) {
-    closeSearchPopover()
-    return
-  }
-  await openSearchPopover()
-}
-
-function handleDocumentClick(e: MouseEvent) {
-  const target = e.target as Node | null
-  if (!target) return
-
-  if (searchPopoverOpen.value && searchPopoverRef.value && !searchPopoverRef.value.contains(target)) {
-    searchPopoverOpen.value = false
-  }
-}
-
 // 底部详情面板
 const showDetailPanel = ref(false)
 const selectedTorrent = ref<UnifiedTorrent | null>(null)
 const detailPanelHeight = ref(350)
+const hasHydratedTorrentList = ref(false)
+
+function normalizeViewModeForViewport(viewMode: 'list' | 'card') {
+  if (isMobile.value) return 'card'
+  return viewMode === 'card' ? 'list' : viewMode
+}
+
+function syncSelectedTorrentFromController(hash: string | null) {
+  if (!hash) {
+    showDetailPanel.value = false
+    selectedTorrent.value = null
+    return
+  }
+
+  const torrent = torrentStore.torrents.get(hash)
+  if (!torrent) {
+    showDetailPanel.value = false
+    selectedTorrent.value = null
+    if (hasHydratedTorrentList.value && requestedDetailTorrentId.value === hash) {
+      setSelectedTorrentId(null)
+    }
+    return
+  }
+
+  const shouldSyncSelection = uiState.selection.size === 0 || !uiState.selection.has(hash)
+  selectedTorrent.value = torrent
+  if (shouldSyncSelection) {
+    select(hash, { mode: 'replace' })
+  }
+  showDetailPanel.value = true
+}
+
+function handleDetailTabChange(tab: DashboardDetailTab) {
+  setDetailTab(tab)
+}
 
 // 选择种子并显示详情
 function selectTorrentForDetail(hash: string, event?: Event) {
@@ -236,7 +252,7 @@ function selectTorrentForDetail(hash: string, event?: Event) {
   
   if (isCtrlClick) {
     // Ctrl+点击：切换选择状态，不改变详情面板
-    toggleSelect(hash)
+    select(hash, { mode: 'toggle' })
     return
   }
   
@@ -250,39 +266,51 @@ function selectTorrentForDetail(hash: string, event?: Event) {
     if (currentIndex !== -1 && lastIndex !== -1) {
       const start = Math.min(currentIndex, lastIndex)
       const end = Math.max(currentIndex, lastIndex)
-      
-      uiState.selection.clear()
-      for (let i = start; i <= end; i++) {
-        const t = allTorrents[i]
-        if (t) uiState.selection.add(t.id)
-      }
+
+      const hashes = allTorrents
+        .slice(start, end + 1)
+        .map(torrent => torrent.id)
+      selectRange(hashes)
     }
     return
   }
 
   // 普通点击：选择种子并显示详情
+  if (!showDetailPanel.value) setDetailTab('overview')
   selectedTorrent.value = torrent
+  setSelectedTorrentId(hash)
   showDetailPanel.value = true
   
   // 单选模式
-  uiState.selection.clear()
-  uiState.selection.add(hash)
+  select(hash, { mode: 'replace' })
 }
 
 // 关闭详情面板
 function closeDetailPanel() {
   showDetailPanel.value = false
   selectedTorrent.value = null
+  setSelectedTorrentId(null)
 }
 
 // Store 更新后同步底部面板展示的 torrent 引用；删除后自动关闭详情面板
 watch(() => torrentStore.torrents, () => {
   const current = selectedTorrent.value
-  if (!current) return
+  if (!current) {
+    if (requestedDetailTorrentId.value) {
+      syncSelectedTorrentFromController(requestedDetailTorrentId.value)
+    }
+    return
+  }
   const updated = torrentStore.torrents.get(current.id)
   if (updated) selectedTorrent.value = updated
   else closeDetailPanel()
 })
+
+watch(
+  requestedDetailTorrentId,
+  (hash) => syncSelectedTorrentFromController(hash),
+  { immediate: true }
+)
 
 // 调整面板高度
 function resizeDetailPanel(height: number) {
@@ -292,8 +320,16 @@ function resizeDetailPanel(height: number) {
 // 键盘导航
 const focusedIndex = ref(-1)
 
+function isKeyboardEventFromEditableTarget(event: KeyboardEvent) {
+  const target = event.target
+  if (!(target instanceof HTMLElement)) return false
+
+  return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(target.tagName)
+}
+
 // 键盘事件处理
 function handleKeyDown(e: KeyboardEvent) {
+  if (e.defaultPrevented || isKeyboardEventFromEditableTarget(e)) return
   if (sortedTorrents.value.length === 0) return
   
   const maxIndex = sortedTorrents.value.length - 1
@@ -322,7 +358,7 @@ function handleKeyDown(e: KeyboardEvent) {
         const torrent = sortedTorrents.value[focusedIndex.value]
         if (!torrent) break
         if (e.ctrlKey || e.key === ' ') {
-          toggleSelect(torrent.id)
+          select(torrent.id, { mode: 'toggle' })
         } else {
           selectTorrentForDetail(torrent.id)
         }
@@ -357,14 +393,11 @@ const handleResize = () => {
 
     const nextMobile = w < 768
     if (isMobile.value !== nextMobile) isMobile.value = nextMobile
-    const nextViewMode = nextMobile ? 'card' : 'list'
-    if (uiState.viewMode !== nextViewMode) uiState.viewMode = nextViewMode
+    setViewMode(normalizeViewModeForViewport(uiState.viewMode))
 
     // 移动端自动折叠侧边栏
     if (nextMobile) sidebarCollapsed.value = true
 
-    // 回到较宽屏幕后收起窄屏 popover
-    if (w >= 1120) searchPopoverOpen.value = false
   })
 }
 
@@ -414,6 +447,10 @@ const stats = computed(() => {
   return result
 })
 
+const totalTorrentSize = computed(() =>
+  Array.from(torrentStore.torrents.values()).reduce((sum, torrent) => sum + torrent.size, 0),
+)
+
 watch(
   [stateFilter, categoryFilter, tagFilter, debouncedFilter, () => uiState.sortBy, () => uiState.sortOrder],
   () => schedulePreserveTopAnchor(),
@@ -423,19 +460,6 @@ watch(
 // 是否使用虚拟滚动（超过阈值时启用）
 const useVirtualScroll = computed(() => sortedTorrents.value.length >= VIRTUAL_SCROLL_THRESHOLD)
 const useMobileVirtualScroll = computed(() => sortedTorrents.value.length >= MOBILE_VIRTUAL_SCROLL_THRESHOLD)
-
-const selectedCount = computed(() => uiState.selection.size)
-
-const selectedBadge = computed<string | undefined>(() => {
-  const count = selectedCount.value
-  if (count <= 0) return undefined
-  return count > 99 ? '99+' : String(count)
-})
-
-const isAllSelected = computed(() => {
-  const total = sortedTorrents.value.length
-  return total > 0 && selectedCount.value === total
-})
 
 function handleQueueAction(action: 'queue-top' | 'queue-up' | 'queue-down' | 'queue-bottom') {
   void runTorrentAction(action, Array.from(uiState.selection), { clearSelection: true })
@@ -533,10 +557,16 @@ const toolbarTwoRowTopItems = computed<OverflowActionItem[]>(() => [
 const showSearchInput = computed(() => windowWidth.value >= 1120)
 const useTwoRowToolbar = computed(() => windowWidth.value < 960)
 
+async function refreshDashboardData() {
+  const result = await refreshList()
+  hasHydratedTorrentList.value = true
+  return result
+}
+
 // 立即刷新函数（操作后调用）
 async function immediateRefresh() {
   try {
-    await refreshList()
+    await refreshDashboardData()
   } catch (error) {
     console.error('[Dashboard] Refresh failed:', error)
   }
@@ -545,7 +575,7 @@ async function immediateRefresh() {
 // 使用智能轮询（指数退避 + 熔断器 + 页面可见性监听 + 致命错误处理）
 const { start: startPolling, failureCount, isCircuitBroken } = usePolling({
   fn: async () => {
-    await refreshList()
+    await refreshDashboardData()
   },
   shouldSkip: () => backendStore.isMutating,
   // 遇到 403 立即跳转登录
@@ -582,13 +612,7 @@ const connectionLabel = computed(() => {
 const showToolbarConnection = computed(() => showSearchInput.value && !useTwoRowToolbar.value)
 
 function selectAll() {
-  if (uiState.selection.size === sortedTorrents.value.length) {
-    uiState.selection.clear()
-  } else {
-    for (const [hash] of filteredTorrents.value) {
-      uiState.selection.add(hash)
-    }
-  }
+  selectAllVisible()
 }
 
 async function handlePause() {
@@ -608,19 +632,23 @@ async function logout() {
   await router.replace('/login')
 }
 
+function showActionError(title: string, error: unknown) {
+  uiOverlay.notify({
+    title,
+    message: error instanceof Error ? error.message : title,
+    tone: 'danger',
+  })
+}
+
+function toggleSelect(hash: string) {
+  select(hash, { mode: 'toggle' })
+}
+
 // 添加种子
 async function handleAddTorrent(params: AddTorrentParams) {
-  addLoading.value = true
-  addError.value = ''
-  try {
-    await adapter.value.addTorrent(params)
+  const added = await addTorrent(params)
+  if (added) {
     showAddDialog.value = false
-    await immediateRefresh()
-  } catch (err) {
-    console.error('[Dashboard] Failed to add torrent:', err)
-    addError.value = err instanceof Error ? err.message : '添加种子失败'
-  } finally {
-    addLoading.value = false
   }
 }
 
@@ -630,7 +658,7 @@ async function handleTorrentAction(action: string, hash: string) {
     await runTorrentAction(action as TorrentAction, [hash])
   } catch (err) {
     console.error('[Dashboard] Action failed:', err)
-    alert(err instanceof Error ? err.message : '操作失败')
+    showActionError('操作失败', err)
   }
 }
 
@@ -643,90 +671,12 @@ function handleContextMenu(e: MouseEvent, hash: string) {
     ? Array.from(uiState.selection)
     : [hash]
 
-  contextmenuState.value = {
-    show: true,
-    x: e.clientX,
-    y: e.clientY,
-    hashes
-  }
+  openContextMenu({ x: e.clientX, y: e.clientY }, hashes)
 }
 
 // 处理右键菜单操作
 async function handleContextMenuAction(action: string, hashes: string[]) {
-  contextmenuState.value.show = false
-
-  try {
-    switch (action) {
-      case 'set-category':
-        if (backendStore.isTrans) {
-          alert('Transmission 不支持分类（Category）。请使用“移动位置”或“标签”。')
-          return
-        }
-
-        {
-          const currentValues = hashes.map(h => torrentStore.torrents.get(h)?.category ?? '')
-          const unique = Array.from(new Set(currentValues.map(v => v.trim())))
-          const defaultValue = unique.length === 1 ? unique[0]! : ''
-
-          const cats = Array.from(backendStore.categories.values())
-            .map(c => c.name)
-            .map(s => s.trim())
-            .filter(Boolean)
-          const preview = cats.slice(0, 20)
-          const previewText = preview.length > 0
-            ? `\n\n可用分类（前 ${preview.length} 个）：\n${preview.join('\n')}${cats.length > preview.length ? '\n…' : ''}`
-            : ''
-
-          const input = prompt(`请输入分类名（留空清除分类）。${previewText}`, defaultValue)
-          if (input === null) return
-          await adapter.value.setCategoryBatch(hashes, input.trim())
-          await immediateRefresh()
-          return
-        }
-      case 'set-tags':
-        {
-          const getCommonTags = (targetHashes: string[]) => {
-            if (targetHashes.length === 0) return []
-            const all = targetHashes.map(h => new Set(torrentStore.torrents.get(h)?.tags ?? []))
-            let common = new Set(all[0] ?? [])
-            for (const s of all.slice(1)) {
-              common = new Set(Array.from(common).filter(t => s.has(t)))
-            }
-            return Array.from(common).sort((a, b) => a.localeCompare(b, 'zh-CN'))
-          }
-
-          const defaultTags = hashes.length === 1
-            ? (torrentStore.torrents.get(hashes[0]!)?.tags ?? []).join(', ')
-            : getCommonTags(hashes).join(', ')
-
-          const allTags = backendStore.tags
-            .map(t => t.trim())
-            .filter(Boolean)
-          const preview = allTags.slice(0, 30)
-          const previewText = preview.length > 0
-            ? `\n\n已有标签（前 ${preview.length} 个）：\n${preview.join('、')}${allTags.length > preview.length ? '…' : ''}`
-            : ''
-
-          const input = prompt(`请输入标签（多个用逗号分隔，留空清空）。${previewText}`, defaultTags)
-          if (input === null) return
-
-          const tags = input
-            .split(/[,，\n]/g)
-            .map(t => t.trim())
-            .filter(Boolean)
-
-          await adapter.value.setTagsBatch(hashes, tags, 'set')
-          await immediateRefresh()
-          return
-        }
-      default:
-        await runTorrentAction(action as TorrentAction, hashes)
-        return
-    }
-  } catch (err) {
-    console.error('[Dashboard] Contextmenu action failed:', err)
-    alert(err instanceof Error ? err.message : '操作失败')
-  }
+  await runContextMenuAction(action, hashes)
 }
 
 // 批量操作：重新校验选中项
@@ -735,7 +685,7 @@ async function handleRecheckSelected() {
     await runTorrentAction('recheck', Array.from(uiState.selection), { clearSelection: true })
   } catch (err) {
     console.error('[Dashboard] Recheck failed:', err)
-    alert(err instanceof Error ? err.message : '重新校验失败')
+    showActionError('重新校验失败', err)
   }
 }
 
@@ -745,7 +695,7 @@ async function handleForceStartSelected() {
     await runTorrentAction('force-start', Array.from(uiState.selection), { clearSelection: true })
   } catch (err) {
     console.error('[Dashboard] Force start failed:', err)
-    alert(err instanceof Error ? err.message : '强制开始失败')
+    showActionError('强制开始失败', err)
   }
 }
 
@@ -755,71 +705,25 @@ async function handleReannounceSelected() {
     await runTorrentAction('reannounce', Array.from(uiState.selection), { clearSelection: true })
   } catch (err) {
     console.error('[Dashboard] Reannounce failed:', err)
-    alert(err instanceof Error ? err.message : '重新汇报失败')
+    showActionError('重新汇报失败', err)
   }
 }
 
 // 批量操作：限速
 async function handleBatchSpeedLimit() {
-  if (uiState.selection.size === 0) return
-
-  let speedBytes = 1024
-  if (backendStore.isTrans) {
-    try {
-      const settings = await adapter.value.getTransferSettings()
-      if (typeof settings.speedBytes === 'number' && Number.isFinite(settings.speedBytes) && settings.speedBytes > 0) {
-        speedBytes = settings.speedBytes
-      }
-    } catch (err) {
-      console.warn('[Dashboard] Failed to load speedBytes for batch limits, fallback to 1024:', err)
-    }
-  }
-  const unitLabel = speedBytes === 1000 ? 'kB/s' : 'KiB/s'
-
-  const dlLimitInput = prompt(`下载限制 (${unitLabel}, 留空或 0 表示不限制):`)
-  if (dlLimitInput === null) return
-
-  const upLimitInput = prompt(`上传限制 (${unitLabel}, 留空或 0 表示不限制):`)
-  if (upLimitInput === null) return
-
-  const hashes = Array.from(uiState.selection)
-  try {
-    const parseKbLimit = (raw: string) => {
-      const text = raw.trim()
-      if (text === '' || text === '0') return 0
-      const kb = Number.parseInt(text, 10)
-      if (!Number.isFinite(kb) || kb < 0) {
-        throw new Error(`限速请输入非负整数（${unitLabel}）`)
-      }
-      return kb * speedBytes
-    }
-
-    const dlLimit = parseKbLimit(dlLimitInput)
-    const upLimit = parseKbLimit(upLimitInput)
-
-    await adapter.value.setDownloadLimitBatch(hashes, dlLimit)
-    await adapter.value.setUploadLimitBatch(hashes, upLimit)
-
-    uiState.selection.clear()
-    await immediateRefresh()
-  } catch (err) {
-    console.error('[Dashboard] Set speed limit failed:', err)
-    alert(err instanceof Error ? err.message : '设置限速失败')
-  }
+  await runBatchSpeedLimit(Array.from(uiState.selection))
 }
 
 onMounted(() => {
   startPolling()
   window.addEventListener('resize', handleResize)
   window.addEventListener('keydown', handleKeyDown)
-  document.addEventListener('click', handleDocumentClick)
   handleResize() // 初始化
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
   window.removeEventListener('keydown', handleKeyDown)
-  document.removeEventListener('click', handleDocumentClick)
   if (resizeRafId !== null) cancelAnimationFrame(resizeRafId)
 })
 </script>
@@ -847,7 +751,12 @@ onUnmounted(() => {
         <!-- 移动端顶部栏 -->
         <div v-if="isMobile" class="p-4 border-b border-gray-200 flex items-center justify-between">
           <h2 class="font-medium text-gray-900">筛选</h2>
-          <button @click="sidebarCollapsed = true" class="btn p-2 hover:bg-gray-100">
+          <button
+            type="button"
+            class="btn p-2 hover:bg-gray-100"
+            aria-label="关闭筛选侧栏"
+            @click="sidebarCollapsed = true"
+          >
             <Icon name="x" :size="16" />
           </button>
         </div>
@@ -855,7 +764,12 @@ onUnmounted(() => {
         <!-- 桌面端侧边栏头部 -->
         <div v-else class="p-4 border-b border-gray-200 flex items-center justify-between">
           <h2 :class="`font-medium text-gray-900 ${sidebarCollapsed ? 'hidden' : ''}`">TorrentMix UI</h2>
-          <button @click="sidebarCollapsed = !sidebarCollapsed" class="btn p-2 hover:bg-gray-100">
+          <button
+            type="button"
+            class="btn p-2 hover:bg-gray-100"
+            :aria-label="sidebarCollapsed ? '展开筛选侧栏' : '折叠筛选侧栏'"
+            @click="sidebarCollapsed = !sidebarCollapsed"
+          >
             <Icon name="chevron-left" :size="16" :class="{ 'rotate-180': sidebarCollapsed }" />
           </button>
         </div>
@@ -863,22 +777,34 @@ onUnmounted(() => {
         <!-- 过滤器列表 -->
         <nav class="flex-1 overflow-y-auto p-2">
           <div class="space-y-1">
-            <button @click="stateFilter = 'all'"
-                    :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all duration-150 ${stateFilter === 'all' ? 'bg-black text-white' : 'text-gray-700 hover:bg-gray-100'}`">
+            <button
+              type="button"
+              aria-label="筛选全部种子"
+              @click="stateFilter = 'all'"
+              :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${stateFilter === 'all' ? 'bg-black text-white' : 'text-gray-700 hover:bg-gray-100'}`"
+            >
               <Icon name="list" :size="16" />
               <span :class="`truncate text-sm ${sidebarCollapsed ? 'hidden' : ''}`">全部</span>
               <span v-if="stats.total > 0" :class="`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${sidebarCollapsed ? 'hidden' : ''} ${stateFilter === 'all' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-600'}`">{{ stats.total }}</span>
             </button>
 
-            <button @click="stateFilter = 'downloading'"
-                    :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all duration-150 ${stateFilter === 'downloading' ? 'bg-black text-white' : 'text-gray-700 hover:bg-gray-100'}`">
+            <button
+              type="button"
+              aria-label="筛选下载中的种子"
+              @click="stateFilter = 'downloading'"
+              :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${stateFilter === 'downloading' ? 'bg-black text-white' : 'text-gray-700 hover:bg-gray-100'}`"
+            >
               <Icon name="download" color="blue" :size="16" />
               <span :class="`truncate text-sm ${sidebarCollapsed ? 'hidden' : ''}`">下载中</span>
               <span v-if="stats.downloading > 0" :class="`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${sidebarCollapsed ? 'hidden' : ''} ${stateFilter === 'downloading' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-600'}`">{{ stats.downloading }}</span>
             </button>
 
-            <button @click="stateFilter = 'seeding'"
-                    :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all duration-150 ${stateFilter === 'seeding' ? 'bg-black text-white' : 'text-gray-700 hover:bg-gray-100'}`">
+            <button
+              type="button"
+              aria-label="筛选做种中的种子"
+              @click="stateFilter = 'seeding'"
+              :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${stateFilter === 'seeding' ? 'bg-black text-white' : 'text-gray-700 hover:bg-gray-100'}`"
+            >
               <Icon name="upload-cloud" color="cyan" :size="16" />
               <span :class="`truncate text-sm ${sidebarCollapsed ? 'hidden' : ''}`">做种中</span>
               <span v-if="stats.seeding > 0" :class="`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${sidebarCollapsed ? 'hidden' : ''} ${stateFilter === 'seeding' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-600'}`">{{ stats.seeding }}</span>
@@ -886,8 +812,12 @@ onUnmounted(() => {
 
             <!-- 已暂停（固定展开二级分类） -->
             <div>
-              <button @click="stateFilter = 'paused'"
-                      :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all duration-150 ${stateFilter === 'paused' || stateFilter.startsWith('paused-') ? 'bg-black text-white' : 'text-gray-700 hover:bg-gray-100'}`">
+              <button
+                type="button"
+                aria-label="筛选已暂停的种子"
+                @click="stateFilter = 'paused'"
+                :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${stateFilter === 'paused' || stateFilter.startsWith('paused-') ? 'bg-black text-white' : 'text-gray-700 hover:bg-gray-100'}`"
+              >
                 <Icon name="pause-circle" color="gray" :size="16" />
                 <span :class="`truncate text-sm ${sidebarCollapsed ? 'hidden' : ''}`">已暂停</span>
                 <span v-if="stats.paused > 0" :class="`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${sidebarCollapsed ? 'hidden' : ''} ${stateFilter === 'paused' || stateFilter.startsWith('paused-') ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-600'}`">{{ stats.paused }}</span>
@@ -895,15 +825,21 @@ onUnmounted(() => {
 
               <!-- 二级分类：固定展开 -->
               <div v-if="!sidebarCollapsed" class="ml-6 mt-1 space-y-1">
-                <button @click.stop="stateFilter = 'paused-completed'"
-                        :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all duration-150 ${stateFilter === 'paused-completed' ? 'bg-gray-800 text-white' : 'text-gray-600 hover:bg-gray-100'}`">
+                <button
+                  type="button"
+                  @click.stop="stateFilter = 'paused-completed'"
+                  :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${stateFilter === 'paused-completed' ? 'bg-gray-800 text-white' : 'text-gray-600 hover:bg-gray-100'}`"
+                >
                   <Icon name="check-circle" color="green" :size="14" />
                   <span class="truncate text-sm">已完成</span>
                   <span v-if="stats.pausedCompleted > 0" :class="`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${stateFilter === 'paused-completed' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-600'}`">{{ stats.pausedCompleted }}</span>
                 </button>
 
-                <button @click.stop="stateFilter = 'paused-incomplete'"
-                        :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all duration-150 ${stateFilter === 'paused-incomplete' ? 'bg-gray-800 text-white' : 'text-gray-600 hover:bg-gray-100'}`">
+                <button
+                  type="button"
+                  @click.stop="stateFilter = 'paused-incomplete'"
+                  :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${stateFilter === 'paused-incomplete' ? 'bg-gray-800 text-white' : 'text-gray-600 hover:bg-gray-100'}`"
+                >
                   <Icon name="download-cloud" color="orange" :size="14" />
                   <span class="truncate text-sm">未完成</span>
                   <span v-if="stats.pausedIncomplete > 0" :class="`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${stateFilter === 'paused-incomplete' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-600'}`">{{ stats.pausedIncomplete }}</span>
@@ -911,22 +847,34 @@ onUnmounted(() => {
               </div>
             </div>
 
-            <button @click="stateFilter = 'checking'"
-                    :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all duration-150 ${stateFilter === 'checking' ? 'bg-black text-white' : 'text-gray-700 hover:bg-gray-100'}`">
+            <button
+              type="button"
+              aria-label="筛选检查中的种子"
+              @click="stateFilter = 'checking'"
+              :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${stateFilter === 'checking' ? 'bg-black text-white' : 'text-gray-700 hover:bg-gray-100'}`"
+            >
               <Icon name="refresh-cw" color="purple" :size="16" />
               <span :class="`truncate text-sm ${sidebarCollapsed ? 'hidden' : ''}`">检查中</span>
               <span v-if="stats.checking > 0" :class="`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${sidebarCollapsed ? 'hidden' : ''} ${stateFilter === 'checking' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-600'}`">{{ stats.checking }}</span>
             </button>
 
-            <button @click="stateFilter = 'queued'"
-                    :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all duration-150 ${stateFilter === 'queued' ? 'bg-black text-white' : 'text-gray-700 hover:bg-gray-100'}`">
+            <button
+              type="button"
+              aria-label="筛选队列中的种子"
+              @click="stateFilter = 'queued'"
+              :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${stateFilter === 'queued' ? 'bg-black text-white' : 'text-gray-700 hover:bg-gray-100'}`"
+            >
               <Icon name="clock" color="orange" :size="16" />
               <span :class="`truncate text-sm ${sidebarCollapsed ? 'hidden' : ''}`">队列中</span>
               <span v-if="stats.queued > 0" :class="`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${sidebarCollapsed ? 'hidden' : ''} ${stateFilter === 'queued' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-600'}`">{{ stats.queued }}</span>
             </button>
 
-            <button @click="stateFilter = 'error'"
-                    :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all duration-150 ${stateFilter === 'error' ? 'bg-black text-white' : 'text-gray-700 hover:bg-gray-100'}`">
+            <button
+              type="button"
+              aria-label="筛选出错的种子"
+              @click="stateFilter = 'error'"
+              :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${stateFilter === 'error' ? 'bg-black text-white' : 'text-gray-700 hover:bg-gray-100'}`"
+            >
               <Icon name="alert-circle" color="red" :size="16" />
               <span :class="`truncate text-sm ${sidebarCollapsed ? 'hidden' : ''}`">错误</span>
               <span v-if="stats.error > 0" :class="`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${sidebarCollapsed ? 'hidden' : ''} ${stateFilter === 'error' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-600'}`">{{ stats.error }}</span>
@@ -948,14 +896,21 @@ onUnmounted(() => {
             />
 
             <div v-else class="space-y-1">
-              <button @click="categoryFilter = 'all'"
-                      :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all duration-150 ${categoryFilter === 'all' ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100'}`">
+              <button
+                type="button"
+                @click="categoryFilter = 'all'"
+                :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${categoryFilter === 'all' ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100'}`"
+              >
                 <Icon name="folder" :size="14" />
                 <span class="truncate text-sm">全部分类</span>
               </button>
-              <button v-for="cat in Array.from(backendStore.categories.values())" :key="cat.name"
-                      @click="categoryFilter = cat.name"
-                      :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all duration-150 ${categoryFilter === cat.name ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100'}`">
+              <button
+                v-for="cat in Array.from(backendStore.categories.values())"
+                :key="cat.name"
+                type="button"
+                @click="categoryFilter = cat.name"
+                :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${categoryFilter === cat.name ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100'}`"
+              >
                 <Icon name="folder" :size="14" />
                 <SafeText as="span" class="truncate text-sm" :text="cat.name" />
               </button>
@@ -966,13 +921,20 @@ onUnmounted(() => {
           <div v-if="backendStore.tags.length > 0" :class="`mt-4 ${sidebarCollapsed ? 'hidden' : ''}`">
             <h3 :class="`text-xs font-medium text-gray-500 uppercase tracking-wider px-3 mb-2`">标签</h3>
             <div class="flex flex-wrap gap-2 px-3">
-              <button @click="tagFilter = 'all'"
-                      :class="`px-2 py-1 rounded text-xs font-medium transition-colors ${tagFilter === 'all' ? 'bg-black text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`">
+              <button
+                type="button"
+                @click="tagFilter = 'all'"
+                :class="`px-2 py-1 rounded text-xs font-medium transition-colors ${tagFilter === 'all' ? 'bg-black text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`"
+              >
                 全部
               </button>
-              <button v-for="tag in backendStore.tags" :key="tag"
-                      @click="tagFilter = tag"
-                      :class="`px-2 py-1 rounded text-xs font-medium transition-colors ${tagFilter === tag ? 'bg-black text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`">
+              <button
+                v-for="tag in backendStore.tags"
+                :key="tag"
+                type="button"
+                @click="tagFilter = tag"
+                :class="`px-2 py-1 rounded text-xs font-medium transition-colors ${tagFilter === tag ? 'bg-black text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`"
+              >
                 <SafeText as="span" :text="tag" />
               </button>
             </div>
@@ -1012,42 +974,10 @@ onUnmounted(() => {
 
               <!-- 搜索 -->
               <div class="flex items-center">
-                <div v-if="showSearchInput" class="relative w-[clamp(9rem,14vw,14rem)] min-w-0">
-                  <Icon name="search" :size="16" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input v-model="uiState.filter" type="text" placeholder="搜索种子名称..." class="input pl-10 py-2" />
-                </div>
-
-                <div v-else ref="searchPopoverRef" class="relative">
-                  <button @click.stop="toggleSearchPopover" class="icon-btn" title="搜索">
-                    <Icon name="search" :size="16" />
-                  </button>
-                  <div
-                    v-if="searchPopoverOpen"
-                    class="absolute right-0 top-full mt-2 bg-white border border-gray-200 shadow-lg rounded-xl z-50 w-[min(92vw,22rem)]"
-                  >
-                    <div class="p-2">
-                      <div class="flex items-center gap-2">
-                        <div class="relative flex-1 min-w-0">
-                          <Icon name="search" :size="16" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                          <input
-                            ref="searchInputRef"
-                            v-model="uiState.filter"
-                            type="text"
-                            placeholder="搜索种子名称..."
-                            class="input pl-10 py-2"
-                            @keydown.esc="closeSearchPopover"
-                          />
-                        </div>
-                        <button @click="closeSearchPopover" class="icon-btn" title="关闭搜索">
-                          <Icon name="x" :size="16" />
-                        </button>
-                      </div>
-                      <div class="text-[11px] text-gray-400 mt-2 px-1">
-                        Esc 关闭，点击空白处收起
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <DashboardSearchControl
+                  v-model="uiState.filter"
+                  :inline="showSearchInput"
+                />
               </div>
 
               <!-- 连接状态 -->
@@ -1063,7 +993,14 @@ onUnmounted(() => {
 
               <ServerSwitchMenu />
 
-              <button v-if="authStore.isSecuredConnection" @click="logout" class="icon-btn" title="退出登录">
+              <button
+                v-if="authStore.isSecuredConnection"
+                type="button"
+                class="icon-btn"
+                aria-label="退出登录"
+                title="退出登录"
+                @click="logout"
+              >
                 <Icon name="log-out" :size="16" />
               </button>
             </div>
@@ -1084,42 +1021,22 @@ onUnmounted(() => {
               <div class="flex items-center gap-2 shrink-0">
                 <!-- 搜索 -->
                 <div class="flex items-center">
-                  <div ref="searchPopoverRef" class="relative">
-                    <button @click.stop="toggleSearchPopover" class="icon-btn" title="搜索">
-                      <Icon name="search" :size="16" />
-                    </button>
-                    <div
-                      v-if="searchPopoverOpen"
-                      class="absolute right-0 top-full mt-2 bg-white border border-gray-200 shadow-lg rounded-xl z-50 w-[min(92vw,22rem)]"
-                    >
-                      <div class="p-2">
-                        <div class="flex items-center gap-2">
-                          <div class="relative flex-1 min-w-0">
-                            <Icon name="search" :size="16" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                            <input
-                              ref="searchInputRef"
-                              v-model="uiState.filter"
-                              type="text"
-                              placeholder="搜索种子名称..."
-                              class="input pl-10 py-2"
-                              @keydown.esc="closeSearchPopover"
-                            />
-                          </div>
-                          <button @click="closeSearchPopover" class="icon-btn" title="关闭搜索">
-                            <Icon name="x" :size="16" />
-                          </button>
-                        </div>
-                        <div class="text-[11px] text-gray-400 mt-2 px-1">
-                          Esc 关闭，点击空白处收起
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  <DashboardSearchControl
+                    v-model="uiState.filter"
+                    :inline="false"
+                  />
                 </div>
 
                 <ServerSwitchMenu />
 
-                <button v-if="authStore.isSecuredConnection" @click="logout" class="icon-btn" title="退出登录">
+                <button
+                  v-if="authStore.isSecuredConnection"
+                  type="button"
+                  class="icon-btn"
+                  aria-label="退出登录"
+                  title="退出登录"
+                  @click="logout"
+                >
                   <Icon name="log-out" :size="16" />
                 </button>
               </div>
@@ -1268,82 +1185,30 @@ onUnmounted(() => {
           :torrent="selectedTorrent"
           :visible="showDetailPanel"
           :height="detailPanelHeight"
+          :active-tab="detailTab"
           @close="closeDetailPanel"
           @resize="resizeDetailPanel"
           @action="handleTorrentAction"
           @refresh="immediateRefresh"
+          @tab-change="handleDetailTabChange"
         />
 
         <!-- 底部状态栏 -->
-        <div class="relative border-t border-gray-200 px-4 pt-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] text-xs text-gray-500 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between shrink-0 bg-gray-50">
-          <!-- 左侧：版本号 + 统计信息 -->
-          <div class="flex items-center gap-3 order-2 sm:order-1">
-            <div class="flex items-center gap-x-4 gap-y-1 flex-wrap flex-1 min-w-0">
-              <!-- 版本号 -->
-              <span v-if="backendStore.versionDisplay" class="text-gray-400">{{ backendStore.versionDisplay }}</span>
-              <div v-else class="flex items-center gap-1 text-amber-600">
-                <Icon name="alert-triangle" :size="12" />
-                <span>版本检测失败</span>
-              </div>
-              <div class="w-px h-3 bg-gray-300"></div>
-              <!-- 统计 -->
-              <div class="flex items-center gap-2">
-                <div class="w-2 h-2 bg-blue-500 rounded-full"></div>
-                <span class="font-medium text-gray-700">{{ stats.downloading }}</span>
-                <span>下载中</span>
-              </div>
-              <div class="flex items-center gap-2">
-                <div class="w-2 h-2 bg-cyan-500 rounded-full"></div>
-                <span class="font-medium text-gray-700">{{ stats.seeding }}</span>
-                <span>做种中</span>
-              </div>
-              <div class="hidden lg:flex items-center gap-2">
-                <span>总大小</span>
-                <span class="font-mono font-medium text-gray-700">{{ formatBytes(Array.from(torrentStore.torrents.values()).reduce((sum, t) => sum + t.size, 0)) }}</span>
-              </div>
-            </div>
-
-          </div>
-
-          <!-- 右侧：速度（含限速） -->
-          <div class="flex items-center gap-4 font-mono text-xs w-full justify-between sm:w-auto sm:justify-end order-1 sm:order-2">
-            <div class="flex items-center gap-1">
-              <span class="text-gray-500">↓</span>
-              <span class="font-medium">{{ formatSpeed(stats.dlSpeed) }}</span>
-              <span v-if="backendStore.serverState && backendStore.serverState.dlRateLimit > 0"
-                    class="text-gray-400 text-[10px] ml-0.5"
-                    :title="`下载限速: ${formatSpeed(backendStore.serverState.dlRateLimit)}`">
-                / {{ formatSpeed(backendStore.serverState.dlRateLimit) }}
-              </span>
-            </div>
-            <div class="flex items-center gap-1">
-              <span class="text-gray-500">↑</span>
-              <span class="font-medium">{{ formatSpeed(stats.upSpeed) }}</span>
-              <span v-if="backendStore.serverState && backendStore.serverState.upRateLimit > 0"
-                    class="text-gray-400 text-[10px] ml-0.5"
-                    :title="`上传限速: ${formatSpeed(backendStore.serverState.upRateLimit)}`">
-                / {{ formatSpeed(backendStore.serverState.upRateLimit) }}
-              </span>
-            </div>
-            <!-- 备用速度限制（Alt Speed）指示器 -->
-            <div v-if="backendStore.serverState?.useAltSpeed"
-                 class="flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-[10px] font-medium ml-2"
-                 title="备用速度限制已启用">
-              <Icon name="gauge" :size="10" />
-              <span>ALT</span>
-            </div>
-          </div>
-
-          <!-- 连接状态点：固定右下角（顶部不显示时） -->
-          <div v-if="!showToolbarConnection" class="absolute right-4 bottom-2" :title="connectionStatus.text">
-            <div
-              :class="`w-2 h-2 rounded-full ${
-                connectionStatus.type === 'success' ? 'bg-green-500' :
-                connectionStatus.type === 'warning' ? 'bg-yellow-500 animate-pulse' : 'bg-red-500'
-              }`"
-            ></div>
-          </div>
-        </div>
+        <DashboardStatusBar
+          :version-display="backendStore.versionDisplay ?? ''"
+          :has-version-error="!backendStore.versionDisplay"
+          :downloading-count="stats.downloading"
+          :seeding-count="stats.seeding"
+          :total-size="totalTorrentSize"
+          :dl-speed="stats.dlSpeed"
+          :up-speed="stats.upSpeed"
+          :dl-rate-limit="backendStore.serverState?.dlRateLimit ?? 0"
+          :up-rate-limit="backendStore.serverState?.upRateLimit ?? 0"
+          :use-alt-speed="backendStore.serverState?.useAltSpeed ?? false"
+          :show-connection-indicator="!showToolbarConnection"
+          :connection-status-text="connectionStatus.text"
+          :connection-status-type="connectionStatus.type"
+        />
       </main>
     </div>
 
@@ -1395,7 +1260,7 @@ onUnmounted(() => {
       :hashes="contextmenuState.hashes"
       :can-set-category="backendStore.isQbit"
       :can-queue="capabilities.hasTorrentQueue"
-      @close="contextmenuState.show = false"
+      @close="closeContextMenu"
       @action="handleContextMenuAction"
     />
   </div>

@@ -2,6 +2,25 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  color-scheme: light;
+  --tm-bg: #f8fafc;
+  --tm-surface: #ffffff;
+  --tm-surface-muted: #f8fafc;
+  --tm-surface-strong: #f1f5f9;
+  --tm-border: #e2e8f0;
+  --tm-border-strong: #cbd5e1;
+  --tm-text: #0f172a;
+  --tm-text-muted: #64748b;
+  --tm-primary: #0f172a;
+  --tm-primary-contrast: #ffffff;
+  --tm-accent: #2563eb;
+  --tm-danger: #dc2626;
+  --tm-ring: rgba(37, 99, 235, 0.22);
+  --tm-toolbar-gap: 0.5rem;
+  --tm-row-height: 3.5rem;
+}
+
 /* 本地字体定义（由 Vite 处理并带 hash 输出，支持子路径部署） */
 @layer base {
   /* Inter 可变字体 (开源: SIL Open Font License) */
@@ -25,10 +44,18 @@
 
 @layer base {
   * {
-    @apply border-gray-200;
+    border-color: var(--tm-border);
   }
+
+  html {
+    @apply bg-slate-50;
+    -webkit-tap-highlight-color: rgba(15, 23, 42, 0.08);
+  }
+
   body {
-    @apply font-sans text-gray-900 antialiased;
+    @apply font-sans antialiased;
+    background: var(--tm-bg);
+    color: var(--tm-text);
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
     font-feature-settings: 'cv11', 'ss01';
     font-variation-settings: 'opsz' 32;
@@ -36,6 +63,22 @@
 
   code, pre, .font-mono {
     font-family: 'JetBrains Mono', 'SF Mono', 'Consolas', 'Monaco', 'Courier New', monospace;
+  }
+
+  button,
+  [role='button'],
+  a {
+    touch-action: manipulation;
+  }
+
+  button:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible,
+  [role='button']:focus-visible,
+  a:focus-visible {
+    outline: 2px solid transparent;
+    box-shadow: 0 0 0 3px var(--tm-ring);
   }
 
   /* 优化滚动条样式 */
@@ -56,20 +99,60 @@
 @layer components {
   /* Vercel风格按钮 */
   .btn {
-    @apply inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-lg transition-all duration-150;
-    @apply border border-gray-200 bg-white text-gray-900;
-    @apply hover:border-gray-300 hover:bg-gray-50;
-    @apply focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500;
-    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center rounded-xl border px-4 py-2 text-sm font-medium;
+    @apply bg-white text-slate-900;
+    transition-property: background-color, border-color, color, box-shadow, transform;
+    transition-duration: 150ms;
+    transition-timing-function: ease;
+    border-color: var(--tm-border);
+    min-height: 2.5rem;
+  }
+
+  .btn:hover {
+    @apply bg-slate-50;
+    border-color: var(--tm-border-strong);
+  }
+
+  .btn:focus-visible {
+    border-color: var(--tm-accent);
+  }
+
+  .btn:active {
+    transform: translateY(0.5px);
+  }
+
+  .btn[disabled] {
+    @apply cursor-not-allowed opacity-50;
   }
 
   /* Icon-only buttons (toolbar, panels) */
   .icon-btn {
-    @apply inline-flex items-center justify-center h-9 w-9 rounded-lg border border-gray-200 bg-white text-gray-700;
-    @apply hover:bg-gray-50 hover:border-gray-300;
-    @apply focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500;
-    @apply transition-all duration-150;
-    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center rounded-xl border bg-white text-slate-700;
+    transition-property: background-color, border-color, color, box-shadow, transform;
+    transition-duration: 150ms;
+    transition-timing-function: ease;
+    border-color: var(--tm-border);
+    height: 2.25rem;
+    width: 2.25rem;
+    min-height: 2.25rem;
+    min-width: 2.25rem;
+  }
+
+  .icon-btn:hover {
+    @apply bg-slate-50;
+    border-color: var(--tm-border-strong);
+  }
+
+  .icon-btn:focus-visible {
+    border-color: var(--tm-accent);
+  }
+
+  .icon-btn:active {
+    transform: translateY(0.5px);
+  }
+
+  .icon-btn[disabled] {
+    @apply cursor-not-allowed opacity-50;
   }
 
   .icon-btn-in-group {
@@ -100,32 +183,55 @@
   }
   
   .btn-primary {
-    @apply bg-black text-white border-black;
-    @apply hover:bg-gray-800 hover:border-gray-800;
+    background: var(--tm-primary);
+    color: var(--tm-primary-contrast);
+    border-color: var(--tm-primary);
+  }
+
+  .btn-primary:hover {
+    background: #020617;
+    border-color: #020617;
   }
   
   .btn-destructive {
-    @apply rounded-lg bg-red-500 text-white border-red-500;
-    @apply hover:bg-red-600 hover:border-red-600;
+    background: var(--tm-danger);
+    color: white;
+    border-color: var(--tm-danger);
+  }
+
+  .btn-destructive:hover {
+    background: #b91c1c;
+    border-color: #b91c1c;
   }
   
   /* 输入框 */
   .input {
-    @apply w-full px-3 py-2 text-sm rounded-lg border border-gray-200;
-    @apply bg-white placeholder:text-gray-400;
-    @apply focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500;
-    @apply transition-all duration-150;
+    @apply w-full rounded-xl border px-3 py-2 text-sm;
+    @apply bg-white text-slate-900 placeholder:text-slate-400;
+    transition-property: background-color, border-color, color, box-shadow;
+    transition-duration: 150ms;
+    transition-timing-function: ease;
+    border-color: var(--tm-border);
+    min-height: 2.5rem;
+  }
+
+  .input:focus-visible {
+    border-color: var(--tm-accent);
   }
   
   /* 卡片 */
   .card {
-    @apply bg-white rounded-xl border border-gray-200 shadow-sm;
+    @apply rounded-2xl border bg-white shadow-sm;
+    border-color: var(--tm-border);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   }
   
   /* 表格行hover效果 */
   .table-row {
-    @apply hover:bg-gray-50 transition-colors duration-150;
-    @apply border-b border-gray-100;
+    @apply border-b border-slate-100 hover:bg-slate-50;
+    transition-property: background-color, border-color;
+    transition-duration: 150ms;
+    min-height: var(--tm-row-height);
   }
   
   .table-row:last-child {
@@ -143,16 +249,34 @@
   }
   
   .progress-fill {
-    @apply h-full transition-all duration-300 ease-out rounded-full;
+    @apply h-full rounded-full;
+    transition-property: width, background-color;
+    transition-duration: 300ms;
+    transition-timing-function: ease-out;
   }
 }
 
 @layer utilities {
+  .font-tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
   .line-clamp-2 {
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
     line-clamp: 2;
     overflow: hidden;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
   }
 }

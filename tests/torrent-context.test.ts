@@ -1,12 +1,17 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createPinia, setActivePinia } from 'pinia'
+import { nextTick, reactive } from 'vue'
 
 import { useBackendStore } from '../src/store/backend.ts'
 import { useTorrentStore } from '../src/store/torrent.ts'
 import { useTorrentContext } from '../src/composables/useTorrentContext.ts'
 
-function makeTorrent(id: string, name: string) {
+function makeTorrent(
+  id: string,
+  name: string,
+  overrides: Partial<Record<string, unknown>> = {},
+) {
   return {
     id,
     name,
@@ -19,10 +24,35 @@ function makeTorrent(id: string, name: string) {
     ratio: 0,
     addedTime: 0,
     savePath: '',
+    category: '',
+    tags: [],
+    ...overrides,
   } as any
 }
 
-test('torrent context: refreshList updates torrentStore + backend global data', async () => {
+function createOverlayMock(options: {
+  confirmResults?: Array<boolean | null>
+  formResults?: Array<Record<string, string> | null>
+} = {}) {
+  const confirmResults = [...(options.confirmResults ?? [])]
+  const formResults = [...(options.formResults ?? [])]
+  const notifications: Array<{ title?: string; message: string; tone?: string }> = []
+
+  return {
+    notifications,
+    notify(payload: { title?: string; message: string; tone?: string }) {
+      notifications.push(payload)
+    },
+    async confirm() {
+      return confirmResults.shift() ?? false
+    },
+    async openForm() {
+      return formResults.shift() ?? null
+    },
+  }
+}
+
+test('torrent controller: refresh updates torrentStore + backend global data', async () => {
   setActivePinia(createPinia())
 
   const backend = useBackendStore()
@@ -43,11 +73,11 @@ test('torrent context: refreshList updates torrentStore + backend global data', 
         }
       },
     } as any,
-    { type: 'qbit', version: '5.0.0', major: 5, minor: 0, patch: 0 } as any
+    { type: 'qbit', version: '5.0.0', major: 5, minor: 0, patch: 0 } as any,
   )
 
-  const ctx = useTorrentContext()
-  await ctx.refreshList()
+  const ctx = useTorrentContext({ overlay: createOverlayMock() as any })
+  await ctx.actions.refresh()
 
   const torrentStore = useTorrentStore()
   assert.equal(fetchListCalled, 1)
@@ -56,21 +86,14 @@ test('torrent context: refreshList updates torrentStore + backend global data', 
   assert.deepEqual(backend.tags, ['t1'])
 })
 
-test('torrent context: runTorrentAction pause/resume/delete calls adapter and can clear selection', async () => {
+test('torrent controller: delete clears selection and pause/resume dispatch through action executor', async () => {
   setActivePinia(createPinia())
-
-  // Provide browser-like globals used by delete confirmation.
-  const confirmCalls: boolean[] = []
-  ;(globalThis as any).confirm = (v?: any) => {
-    void v
-    const next = confirmCalls.shift()
-    if (next === undefined) throw new Error('confirm not seeded')
-    return next
-  }
 
   const backend = useBackendStore()
   const torrentStore = useTorrentStore()
   torrentStore.updateTorrents(new Map([['a', makeTorrent('a', 'Alpha')]]))
+
+  const overlay = createOverlayMock({ confirmResults: [false, true] })
 
   let fetchListCalled = 0
   let pauseCalled: string[] | null = null
@@ -85,7 +108,9 @@ test('torrent context: runTorrentAction pause/resume/delete calls adapter and ca
       },
       pause: async (hashes: string[]) => { pauseCalled = hashes },
       resume: async (hashes: string[]) => { resumeCalled = hashes },
-      delete: async (hashes: string[], deleteFiles: boolean) => { deleteCalled = { hashes, deleteFiles } },
+      delete: async (hashes: string[], deleteFiles: boolean) => {
+        deleteCalled = { hashes, deleteFiles }
+      },
       recheck: async () => {},
       recheckBatch: async () => {},
       reannounce: async () => {},
@@ -93,28 +118,266 @@ test('torrent context: runTorrentAction pause/resume/delete calls adapter and ca
       forceStart: async () => {},
       forceStartBatch: async () => {},
     } as any,
-    { type: 'qbit', version: '5.0.0', major: 5, minor: 0, patch: 0 } as any
+    { type: 'qbit', version: '5.0.0', major: 5, minor: 0, patch: 0 } as any,
   )
 
-  const ctx = useTorrentContext()
+  const ctx = useTorrentContext({ overlay: overlay as any })
 
-  ctx.uiState.selection.add('a')
-  await ctx.runTorrentAction('pause', ['a'], { clearSelection: true })
+  ctx.actions.select('a', { mode: 'replace' })
+  await ctx.actions.runTorrentAction('pause', ['a'], { clearSelection: true })
   assert.deepEqual(pauseCalled, ['a'])
-  assert.equal(ctx.uiState.selection.size, 0)
+  assert.equal(ctx.state.ui.selection.size, 0)
 
-  ctx.uiState.selection.add('a')
-  await ctx.runTorrentAction('resume', ['a'], { clearSelection: true })
+  ctx.actions.select('a', { mode: 'replace' })
+  await ctx.actions.runTorrentAction('resume', ['a'], { clearSelection: true })
   assert.deepEqual(resumeCalled, ['a'])
-  assert.equal(ctx.uiState.selection.size, 0)
+  assert.equal(ctx.state.ui.selection.size, 0)
 
-  // Delete: first confirm -> deleteFiles? false; second confirm -> ok.
-  confirmCalls.push(false, true)
-  ctx.uiState.selection.add('a')
-  await ctx.runTorrentAction('delete', ['a'], { clearSelection: true })
+  ctx.actions.select('a', { mode: 'replace' })
+  await ctx.actions.runTorrentAction('delete', ['a'], { clearSelection: true })
   assert.deepEqual(deleteCalled, { hashes: ['a'], deleteFiles: false })
-  assert.equal(ctx.uiState.selection.size, 0)
-
-  // refreshList runs for each action
+  assert.equal(ctx.state.ui.selection.size, 0)
   assert.ok(fetchListCalled >= 3)
+})
+
+test('torrent controller: syncFilterImmediately keeps debounced filter and applies state/category/tag filters', async () => {
+  setActivePinia(createPinia())
+
+  const backend = useBackendStore()
+  const torrentStore = useTorrentStore()
+  torrentStore.updateTorrents(new Map([
+    ['a', makeTorrent('a', 'Ubuntu ISO', { state: 'downloading', category: 'linux', tags: ['os'] })],
+    ['b', makeTorrent('b', 'Movie Pack', { state: 'paused', category: 'media', tags: ['video'] })],
+  ]))
+
+  backend.setAdapter(
+    {
+      fetchList: async () => ({ torrents: torrentStore.torrents }),
+    } as any,
+    { type: 'qbit', version: '5.0.0', major: 5, minor: 0, patch: 0 } as any,
+  )
+
+  const ctx = useTorrentContext({ overlay: createOverlayMock() as any })
+
+  ctx.state.ui.filter = 'alpha'
+  ctx.actions.syncFilterImmediately('ubuntu')
+  ctx.state.filters.stateFilter.value = 'downloading'
+  ctx.state.filters.categoryFilter.value = 'linux'
+  ctx.state.filters.tagFilter.value = 'os'
+
+  assert.equal(ctx.state.ui.filter, 'ubuntu')
+  assert.equal(ctx.state.filters.debouncedFilter.value, 'ubuntu')
+  assert.deepEqual(ctx.state.data.sortedTorrents.value.map(torrent => torrent.id), ['a'])
+
+  await new Promise(resolve => setTimeout(resolve, 350))
+
+  assert.equal(ctx.state.filters.debouncedFilter.value, 'ubuntu')
+})
+
+test('torrent controller: context menu action can set category and tags through overlay forms', async () => {
+  setActivePinia(createPinia())
+
+  const backend = useBackendStore()
+  const torrentStore = useTorrentStore()
+  torrentStore.updateTorrents(new Map([
+    ['a', makeTorrent('a', 'Alpha', { category: 'old', tags: ['x', 'y'] })],
+    ['b', makeTorrent('b', 'Beta', { category: 'old', tags: ['x'] })],
+  ]))
+  backend.categories = new Map([
+    ['movie', { name: 'movie', savePath: '/movie' }],
+    ['tv', { name: 'tv', savePath: '/tv' }],
+  ]) as any
+  backend.tags = ['fav', 'archive'] as any
+
+  const overlay = createOverlayMock({
+    formResults: [
+      { category: 'movie' },
+      { tags: 'fav, archive' },
+    ],
+  })
+
+  let setCategoryArgs: { hashes: string[]; category: string } | null = null
+  let setTagsArgs: { hashes: string[]; tags: string[]; mode: string } | null = null
+  let refreshCount = 0
+
+  backend.setAdapter(
+    {
+      fetchList: async () => {
+        refreshCount++
+        return { torrents: torrentStore.torrents }
+      },
+      setCategoryBatch: async (hashes: string[], category: string) => {
+        setCategoryArgs = { hashes, category }
+      },
+      setTagsBatch: async (hashes: string[], tags: string[], mode: string) => {
+        setTagsArgs = { hashes, tags, mode }
+      },
+    } as any,
+    { type: 'qbit', version: '5.0.0', major: 5, minor: 0, patch: 0 } as any,
+  )
+
+  const ctx = useTorrentContext({ overlay: overlay as any })
+
+  await ctx.actions.runContextMenuAction('set-category', ['a', 'b'])
+  await ctx.actions.runContextMenuAction('set-tags', ['a', 'b'])
+
+  assert.deepEqual(setCategoryArgs, { hashes: ['a', 'b'], category: 'movie' })
+  assert.deepEqual(setTagsArgs, { hashes: ['a', 'b'], tags: ['fav', 'archive'], mode: 'set' })
+  assert.equal(refreshCount, 2)
+})
+
+test('torrent controller: batch speed limit uses overlay input, clears selection, and refreshes', async () => {
+  setActivePinia(createPinia())
+
+  const backend = useBackendStore()
+  const torrentStore = useTorrentStore()
+  torrentStore.updateTorrents(new Map([
+    ['a', makeTorrent('a', 'Alpha')],
+    ['b', makeTorrent('b', 'Beta')],
+  ]))
+
+  const overlay = createOverlayMock({
+    formResults: [{ downloadLimit: '200', uploadLimit: '50' }],
+  })
+
+  let downloadArgs: { hashes: string[]; limit: number } | null = null
+  let uploadArgs: { hashes: string[]; limit: number } | null = null
+  let refreshCount = 0
+
+  backend.setAdapter(
+    {
+      fetchList: async () => {
+        refreshCount++
+        return { torrents: torrentStore.torrents }
+      },
+      getTransferSettings: async () => ({ speedBytes: 1000 }),
+      setDownloadLimitBatch: async (hashes: string[], limit: number) => {
+        downloadArgs = { hashes, limit }
+      },
+      setUploadLimitBatch: async (hashes: string[], limit: number) => {
+        uploadArgs = { hashes, limit }
+      },
+    } as any,
+    { type: 'trans', version: '4.1.0', major: 4, minor: 1, patch: 0 } as any,
+  )
+
+  const ctx = useTorrentContext({ overlay: overlay as any })
+  ctx.actions.select('a', { mode: 'replace' })
+  ctx.actions.select('b', { mode: 'toggle' })
+
+  await ctx.actions.runBatchSpeedLimit()
+
+  assert.deepEqual(downloadArgs, { hashes: ['a', 'b'], limit: 200000 })
+  assert.deepEqual(uploadArgs, { hashes: ['a', 'b'], limit: 50000 })
+  assert.equal(ctx.state.ui.selection.size, 0)
+  assert.equal(refreshCount, 1)
+})
+
+test('torrent controller: addTorrent reports success/failure through action executor', async () => {
+  setActivePinia(createPinia())
+
+  const backend = useBackendStore()
+  const torrentStore = useTorrentStore()
+  const overlay = createOverlayMock()
+
+  let addedUrls: string | undefined
+  let refreshCount = 0
+
+  backend.setAdapter(
+    {
+      fetchList: async () => {
+        refreshCount++
+        return { torrents: torrentStore.torrents }
+      },
+      addTorrent: async (params: { urls?: string }) => {
+        addedUrls = params.urls
+      },
+    } as any,
+    { type: 'qbit', version: '5.0.0', major: 5, minor: 0, patch: 0 } as any,
+  )
+
+  const ctx = useTorrentContext({ overlay: overlay as any })
+  const success = await ctx.actions.addTorrent({ urls: 'magnet:?xt=urn:btih:abc' })
+
+  assert.equal(success, true)
+  assert.equal(addedUrls, 'magnet:?xt=urn:btih:abc')
+  assert.equal(refreshCount, 1)
+
+  backend.setAdapter(
+    {
+      fetchList: async () => ({ torrents: torrentStore.torrents }),
+      addTorrent: async () => {
+        throw new Error('boom')
+      },
+    } as any,
+    { type: 'qbit', version: '5.0.0', major: 5, minor: 0, patch: 0 } as any,
+  )
+
+  const originalError = console.error
+  console.error = () => {}
+  try {
+    const failed = await ctx.actions.addTorrent({ urls: 'magnet:?xt=urn:btih:def' })
+    assert.equal(failed, false)
+    assert.equal(overlay.notifications.at(-1)?.title, '添加种子失败')
+  } finally {
+    console.error = originalError
+  }
+})
+
+test('torrent controller: route sync preserves empty category, selected torrent, and detail tab', async () => {
+  setActivePinia(createPinia())
+
+  const backend = useBackendStore()
+  backend.setAdapter(
+    {
+      fetchList: async () => ({ torrents: new Map() }),
+    } as any,
+    { type: 'qbit', version: '5.0.0', major: 5, minor: 0, patch: 0 } as any,
+  )
+
+  const route = reactive({
+    query: {
+      view: 'card',
+      q: ' ubuntu ',
+      category: '',
+      torrent: ' abc123 ',
+      tab: 'files',
+    } as any,
+  })
+
+  const router = {
+    async replace({ query }: { query: Record<string, string> }) {
+      route.query = query as any
+    },
+  }
+
+  const ctx = useTorrentContext({
+    route: route as any,
+    router: router as any,
+    overlay: createOverlayMock() as any,
+    normalizeViewMode: (viewMode) => viewMode,
+  })
+
+  await nextTick()
+
+  assert.equal(ctx.state.ui.viewMode, 'card')
+  assert.equal(ctx.state.ui.filter, 'ubuntu')
+  assert.equal(ctx.state.filters.categoryFilter.value, '')
+  assert.equal(ctx.state.route.selectedTorrentId.value, 'abc123')
+  assert.equal(ctx.state.route.detailTab.value, 'files')
+
+  ctx.actions.syncFilterImmediately('arch')
+  ctx.actions.setSelectedTorrentId('hash-1')
+  ctx.actions.setDetailTab('trackers')
+
+  await nextTick()
+  await nextTick()
+
+  assert.deepEqual(route.query, {
+    view: 'card',
+    q: 'arch',
+    category: '',
+    torrent: 'hash-1',
+    tab: 'trackers',
+  })
 })

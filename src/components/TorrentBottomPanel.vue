@@ -3,6 +3,8 @@ import { computed, ref, watch, onUnmounted } from 'vue'
 import { useBackendStore } from '@/store/backend'
 import type { UnifiedTorrentDetail, UnifiedTorrent, TorrentFile } from '@/adapter/types'
 import type { BackendCapabilities, TorrentBandwidthPriority } from '@/adapter/interface'
+import { useUiOverlay } from '@/composables/useUiOverlay'
+import type { DashboardDetailTab } from '@/utils/dashboardRouteState'
 import Icon from '@/components/Icon.vue'
 import SafeText from '@/components/SafeText.vue'
 import { formatBytes, formatSpeed } from '@/utils/format'
@@ -15,6 +17,7 @@ interface Props {
   torrent: UnifiedTorrent | null
   visible: boolean
   height: number
+  activeTab?: DashboardDetailTab
 }
 
 interface Emits {
@@ -22,6 +25,7 @@ interface Emits {
   (e: 'resize', height: number): void
   (e: 'action', action: string, hash: string): void
   (e: 'refresh'): void
+  (e: 'tab-change', tab: DashboardDetailTab): void
 }
 
 const props = defineProps<Props>()
@@ -29,6 +33,7 @@ const emit = defineEmits<Emits>()
 
 const backendStore = useBackendStore()
 const capabilities = computed<BackendCapabilities>(() => backendStore.capabilities)
+const uiOverlay = useUiOverlay()
 
 // 详情数据
 const detail = ref<UnifiedTorrentDetail | null>(null)
@@ -37,7 +42,37 @@ const error = ref('')
 const mutating = ref(false)
 
 // 当前 Tab
-const activeTab = ref<'overview' | 'files' | 'trackers' | 'peers'>('overview')
+const activeTab = ref<DashboardDetailTab>(props.activeTab ?? 'overview')
+
+function readOverlayValue(values: Record<string, string>, key: string) {
+  return values[key] ?? ''
+}
+
+function showMutationError(title: string, err: unknown) {
+  uiOverlay.notify({
+    title,
+    message: err instanceof Error ? err.message : title,
+    tone: 'danger',
+  })
+}
+
+function isNestedInteractiveKeyboardTarget(event: KeyboardEvent) {
+  const target = event.target
+  const currentTarget = event.currentTarget
+  if (!(target instanceof HTMLElement) || !(currentTarget instanceof HTMLElement)) return false
+
+  const interactive = target.closest('button, input, select, textarea, a, [role="button"]')
+  return interactive !== null && interactive !== currentTarget
+}
+
+function handleFolderRowKeydown(event: KeyboardEvent, path: string) {
+  if (event.key !== 'Enter' && event.key !== ' ') return
+  if (isNestedInteractiveKeyboardTarget(event)) return
+
+  event.preventDefault()
+  event.stopPropagation()
+  toggleFolder(path)
+}
 
 const canTorrentAdvancedSwitches = computed(() => capabilities.value.hasTorrentAdvancedSwitches)
 const canAutoManagement = computed(() =>
@@ -143,6 +178,18 @@ watch(() => props.height, (newHeight) => {
   }
 })
 
+watch(
+  () => props.activeTab,
+  (nextTab) => {
+    if (!nextTab || nextTab === activeTab.value) return
+    activeTab.value = nextTab
+  }
+)
+
+watch(activeTab, (tab) => {
+  emit('tab-change', tab)
+})
+
 // 监听拖拽状态变化，拖拽结束时提交高度
 watch(isResizing, (resizing, wasResizing) => {
   if (wasResizing && !resizing) {
@@ -186,7 +233,7 @@ watch(() => props.torrent?.id, () => {
 watch(() => props.visible, (visible) => {
   if (visible && props.torrent) {
     fetchDetail()
-    activeTab.value = 'overview'
+    if (!props.activeTab) activeTab.value = 'overview'
   }
 })
 
@@ -211,9 +258,23 @@ async function handleRenameTorrent() {
   if (typeof fn !== 'function') return
 
   const current = props.torrent.name
-  const next = prompt('请输入新的种子名称：', current)
-  if (next === null) return
-  const trimmed = next.trim()
+  const values = await uiOverlay.openForm({
+    title: '重命名种子',
+    submitLabel: '保存名称',
+    fields: [
+      {
+        key: 'name',
+        label: '种子名称',
+        name: 'torrentName',
+        defaultValue: current,
+        autocomplete: 'off',
+        placeholder: '请输入新的种子名称',
+      },
+    ],
+  })
+  if (!values) return
+
+  const trimmed = readOverlayValue(values, 'name').trim()
   if (!trimmed || trimmed === current) return
 
   mutating.value = true
@@ -224,7 +285,7 @@ async function handleRenameTorrent() {
     await fetchDetail()
   } catch (err) {
     console.error('[TorrentBottomPanel] Rename torrent failed:', err)
-    alert(err instanceof Error ? err.message : '重命名失败')
+    showMutationError('重命名失败', err)
   } finally {
     backendStore.endMutation()
     mutating.value = false
@@ -235,9 +296,23 @@ async function handleSetLocation() {
   if (!props.torrent?.id || !backendStore.adapter) return
 
   const current = detail.value?.savePath || props.torrent.savePath || ''
-  const next = prompt('请输入新的保存路径：', current)
-  if (next === null) return
-  const trimmed = next.trim()
+  const values = await uiOverlay.openForm({
+    title: '移动保存路径',
+    submitLabel: '保存路径',
+    fields: [
+      {
+        key: 'savePath',
+        label: '保存路径',
+        name: 'savePath',
+        defaultValue: current,
+        autocomplete: 'off',
+        placeholder: '/downloads/ubuntu',
+      },
+    ],
+  })
+  if (!values) return
+
+  const trimmed = readOverlayValue(values, 'savePath').trim()
   if (!trimmed || trimmed === current) return
 
   mutating.value = true
@@ -248,7 +323,7 @@ async function handleSetLocation() {
     await fetchDetail()
   } catch (err) {
     console.error('[TorrentBottomPanel] Set location failed:', err)
-    alert(err instanceof Error ? err.message : '移动位置失败')
+    showMutationError('移动位置失败', err)
   } finally {
     backendStore.endMutation()
     mutating.value = false
@@ -435,7 +510,7 @@ async function saveLimits() {
     dlLimit = parseKbLimit(dlLimitInput.value)
     upLimit = parseKbLimit(upLimitInput.value)
   } catch (err) {
-    alert(err instanceof Error ? err.message : '限速值无效')
+    showMutationError('限速值无效', err)
     return
   }
 
@@ -451,7 +526,7 @@ async function saveLimits() {
     await fetchDetail()
   } catch (err) {
     console.error('[TorrentBottomPanel] Failed to save limits:', err)
-    alert(err instanceof Error ? err.message : '保存限速失败')
+    showMutationError('保存限速失败', err)
   } finally {
     backendStore.endMutation()
     mutating.value = false
@@ -482,7 +557,7 @@ async function handleBandwidthPriorityChange(raw: string) {
     await fetchDetail()
   } catch (err) {
     console.error('[TorrentBottomPanel] Failed to set bandwidth priority:', err)
-    alert(err instanceof Error ? err.message : '设置带宽优先级失败')
+    showMutationError('设置带宽优先级失败', err)
   } finally {
     backendStore.endMutation()
     mutating.value = false
@@ -511,7 +586,7 @@ async function handleAdvancedSwitch(kind: TorrentAdvancedSwitch, enable: boolean
     await fetchDetail()
   } catch (err) {
     console.error('[TorrentBottomPanel] Failed to set advanced switch:', err)
-    alert(err instanceof Error ? err.message : '设置高级开关失败')
+    showMutationError('设置高级开关失败', err)
   } finally {
     backendStore.endMutation()
     mutating.value = false
@@ -522,9 +597,24 @@ async function handleAddTrackers() {
   if (!props.torrent?.id || !backendStore.adapter) return
   if (!canTrackerManagement.value) return
 
-  const input = prompt('请输入 Tracker URL（多条可用换行分隔）：', '')
-  if (input === null) return
-  const urls = input
+  const values = await uiOverlay.openForm({
+    title: '添加 Tracker',
+    message: '支持多条 URL，使用换行或逗号分隔。',
+    submitLabel: '添加 Tracker',
+    fields: [
+      {
+        key: 'urls',
+        label: 'Tracker URL',
+        name: 'trackerUrls',
+        multiline: true,
+        placeholder: 'udp://tracker.example:80/announce',
+        autocomplete: 'off',
+      },
+    ],
+  })
+  if (!values) return
+
+  const urls = readOverlayValue(values, 'urls')
     .split(/[\n,，]+/g)
     .map(s => s.trim())
     .filter(Boolean)
@@ -539,7 +629,7 @@ async function handleAddTrackers() {
     await fetchDetail()
   } catch (err) {
     console.error('[TorrentBottomPanel] Failed to add trackers:', err)
-    alert(err instanceof Error ? err.message : '添加 Tracker 失败')
+    showMutationError('添加 Tracker 失败', err)
   } finally {
     backendStore.endMutation()
     mutating.value = false
@@ -552,14 +642,32 @@ async function handleEditSelectedTracker() {
 
   const urls = Array.from(selectedTrackerUrls.value)
   if (urls.length !== 1) {
-    alert('请先选择 1 个 Tracker 再编辑。')
+    uiOverlay.notify({
+      title: '无法编辑 Tracker',
+      message: '请先选择 1 个 Tracker 再编辑。',
+      tone: 'warning',
+    })
     return
   }
 
   const origUrl = urls[0]!
-  const next = prompt('请输入新的 Tracker URL：', origUrl)
-  if (next === null) return
-  const trimmed = next.trim()
+  const values = await uiOverlay.openForm({
+    title: '编辑 Tracker',
+    submitLabel: '保存 Tracker',
+    fields: [
+      {
+        key: 'url',
+        label: 'Tracker URL',
+        name: 'trackerUrl',
+        defaultValue: origUrl,
+        autocomplete: 'off',
+        placeholder: 'udp://tracker.example:80/announce',
+      },
+    ],
+  })
+  if (!values) return
+
+  const trimmed = readOverlayValue(values, 'url').trim()
   if (!trimmed || trimmed === origUrl) return
 
   mutating.value = true
@@ -571,7 +679,7 @@ async function handleEditSelectedTracker() {
     await fetchDetail()
   } catch (err) {
     console.error('[TorrentBottomPanel] Failed to edit tracker:', err)
-    alert(err instanceof Error ? err.message : '编辑 Tracker 失败')
+    showMutationError('编辑 Tracker 失败', err)
   } finally {
     backendStore.endMutation()
     mutating.value = false
@@ -584,7 +692,15 @@ async function handleRemoveSelectedTrackers() {
 
   const urls = Array.from(selectedTrackerUrls.value)
   if (urls.length === 0) return
-  if (!confirm(`确定移除已选的 ${urls.length} 个 Tracker 吗？`)) return
+
+  const confirmed = await uiOverlay.confirm({
+    title: '移除 Tracker',
+    message: `确定移除已选的 ${urls.length} 个 Tracker 吗？`,
+    confirmLabel: '确认移除',
+    cancelLabel: '取消',
+    tone: 'danger',
+  })
+  if (!confirmed) return
 
   mutating.value = true
   backendStore.beginMutation()
@@ -595,7 +711,7 @@ async function handleRemoveSelectedTrackers() {
     await fetchDetail()
   } catch (err) {
     console.error('[TorrentBottomPanel] Failed to remove trackers:', err)
-    alert(err instanceof Error ? err.message : '移除 Tracker 失败')
+    showMutationError('移除 Tracker 失败', err)
   } finally {
     backendStore.endMutation()
     mutating.value = false
@@ -609,9 +725,24 @@ async function handleAddPeers() {
   const fn = (backendStore.adapter as any)?.addPeers
   if (typeof fn !== 'function') return
 
-  const input = prompt('请输入 Peer 地址（ip:port，多条可用换行分隔）：', '')
-  if (input === null) return
-  const peers = input
+  const values = await uiOverlay.openForm({
+    title: '添加 Peers',
+    message: '支持多条地址，使用换行或逗号分隔。',
+    submitLabel: '添加 Peers',
+    fields: [
+      {
+        key: 'peers',
+        label: 'Peer 地址',
+        name: 'peerAddresses',
+        multiline: true,
+        placeholder: '127.0.0.1:51413',
+        autocomplete: 'off',
+      },
+    ],
+  })
+  if (!values) return
+
+  const peers = readOverlayValue(values, 'peers')
     .split(/[\n,，]+/g)
     .map(s => s.trim())
     .filter(Boolean)
@@ -626,7 +757,7 @@ async function handleAddPeers() {
     await fetchDetail()
   } catch (err) {
     console.error('[TorrentBottomPanel] Failed to add peers:', err)
-    alert(err instanceof Error ? err.message : '添加 Peers 失败')
+    showMutationError('添加 Peers 失败', err)
   } finally {
     backendStore.endMutation()
     mutating.value = false
@@ -642,7 +773,14 @@ async function handleBanSelectedPeers() {
 
   const peers = Array.from(selectedPeers.value)
   if (peers.length === 0) return
-  if (!confirm(`确定封禁已选的 ${peers.length} 个 Peer 吗？\n\n注意：封禁是全局生效的。`)) return
+  const confirmed = await uiOverlay.confirm({
+    title: '封禁 Peers',
+    message: `确定封禁已选的 ${peers.length} 个 Peer 吗？\n\n注意：封禁是全局生效的。`,
+    confirmLabel: '确认封禁',
+    cancelLabel: '取消',
+    tone: 'danger',
+  })
+  if (!confirmed) return
 
   mutating.value = true
   backendStore.beginMutation()
@@ -653,7 +791,7 @@ async function handleBanSelectedPeers() {
     await fetchDetail()
   } catch (err) {
     console.error('[TorrentBottomPanel] Failed to ban peers:', err)
-    alert(err instanceof Error ? err.message : '封禁 Peers 失败')
+    showMutationError('封禁 Peers 失败', err)
   } finally {
     backendStore.endMutation()
     mutating.value = false
@@ -950,13 +1088,29 @@ async function handleRenamePath(node: FileTreeNode) {
   const kindText = isFile ? '文件' : '文件夹'
   const current = normalizeTorrentPath(node.path)
   const currentName = node.name || extractBasename(current)
-  const nextName = prompt(`请输入新的${kindText}名称：`, currentName)
-  if (nextName === null) return
+  const values = await uiOverlay.openForm({
+    title: `重命名${kindText}`,
+    submitLabel: '保存名称',
+    fields: [
+      {
+        key: 'name',
+        label: `${kindText}名称`,
+        name: 'pathName',
+        defaultValue: currentName,
+        autocomplete: 'off',
+      },
+    ],
+  })
+  if (!values) return
 
-  const trimmedName = nextName.trim()
+  const trimmedName = readOverlayValue(values, 'name').trim()
   if (!trimmedName || trimmedName === currentName) return
   if (/[\\/]/.test(trimmedName)) {
-    alert('重命名仅支持修改名称，不支持输入路径（请勿包含 "/" 或 "\\\\"）')
+    uiOverlay.notify({
+      title: '名称格式无效',
+      message: '重命名仅支持修改名称，不支持输入路径（请勿包含 "/" 或 "\\\\"）。',
+      tone: 'warning',
+    })
     return
   }
 
@@ -972,7 +1126,7 @@ async function handleRenamePath(node: FileTreeNode) {
     await fetchDetail()
   } catch (err) {
     console.error('[TorrentBottomPanel] Rename path failed:', err)
-    alert(err instanceof Error ? err.message : '重命名失败')
+    showMutationError('重命名失败', err)
   } finally {
     backendStore.endMutation()
     mutating.value = false
@@ -993,21 +1147,40 @@ async function handleMovePath(node: FileTreeNode) {
   if (!basename) return
 
   const currentDir = extractDirname(current)
-  const nextDirRaw = prompt(
-    `请输入目标目录（相对种子根目录），留空表示根目录：`,
-    currentDir
-  )
-  if (nextDirRaw === null) return
+  const values = await uiOverlay.openForm({
+    title: `移动${kindText}`,
+    message: '请输入相对种子根目录的目标路径，留空表示根目录。',
+    submitLabel: '移动',
+    fields: [
+      {
+        key: 'targetDir',
+        label: '目标目录',
+        name: 'targetDir',
+        defaultValue: currentDir,
+        autocomplete: 'off',
+      },
+    ],
+  })
+  if (!values) return
 
+  const nextDirRaw = readOverlayValue(values, 'targetDir')
   const nextDir = normalizeTorrentPath(nextDirRaw)
   if (hasUnsafePathSegments(nextDir)) {
-    alert('目标目录不允许包含 "." 或 ".."')
+    uiOverlay.notify({
+      title: '目标目录无效',
+      message: '目标目录不允许包含 "." 或 ".."。',
+      tone: 'warning',
+    })
     return
   }
 
   if (node.type === 'folder' && nextDir) {
     if (nextDir === current || nextDir.startsWith(`${current}/`)) {
-      alert('不能把文件夹移动到自身或其子目录中')
+      uiOverlay.notify({
+        title: '目标目录无效',
+        message: '不能把文件夹移动到自身或其子目录中。',
+        tone: 'warning',
+      })
       return
     }
   }
@@ -1023,7 +1196,7 @@ async function handleMovePath(node: FileTreeNode) {
     await fetchDetail()
   } catch (err) {
     console.error('[TorrentBottomPanel] Move path failed:', err)
-    alert(err instanceof Error ? err.message : `移动${kindText}失败`)
+    showMutationError(`移动${kindText}失败`, err)
   } finally {
     backendStore.endMutation()
     mutating.value = false
@@ -1045,7 +1218,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
     await fetchDetail()
   } catch (err) {
     console.error('[TorrentBottomPanel] Failed to set file priority:', err)
-    alert(err instanceof Error ? err.message : '设置文件优先级失败')
+    showMutationError('设置文件优先级失败', err)
     try {
       await fetchDetail()
     } catch {
@@ -1125,7 +1298,9 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
               { key: 'peers', label: 'Peers', icon: 'users' }
             ] as const"
             :key="tab.key"
+            type="button"
             @click="activeTab = tab.key"
+            :aria-pressed="activeTab === tab.key"
             :class="[
               'flex items-center gap-2 px-2 sm:px-3 py-1.5 rounded text-sm font-medium transition-colors whitespace-nowrap',
               activeTab === tab.key
@@ -1144,8 +1319,10 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
         <!-- 暂停/恢复 -->
         <button
           v-if="torrent"
+          type="button"
           @click="handleAction(torrent.state === 'paused' ? 'resume' : 'pause')"
           class="icon-btn"
+          :aria-label="torrent.state === 'paused' ? '开始种子' : '暂停种子'"
           :title="torrent.state === 'paused' ? '开始' : '暂停'"
           :disabled="mutating"
         >
@@ -1155,8 +1332,10 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
         <!-- 重新汇报 (Reannounce) -->
         <button
           v-if="torrent"
+          type="button"
           @click="handleAction('reannounce')"
           class="icon-btn"
+          aria-label="重新汇报种子"
           title="重新汇报"
           :disabled="mutating"
         >
@@ -1166,8 +1345,10 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
         <!-- 重新校验 -->
         <button
           v-if="torrent"
+          type="button"
           @click="handleAction('recheck')"
           class="icon-btn"
+          aria-label="重新校验种子"
           title="重新校验"
           :disabled="mutating"
         >
@@ -1177,8 +1358,10 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
         <!-- 强制开始 -->
         <button
           v-if="torrent && torrent.state !== 'paused'"
+          type="button"
           @click="handleAction('forceStart')"
           class="icon-btn text-amber-600 hover:bg-amber-50 hover:border-amber-200"
+          aria-label="强制开始种子"
           title="强制开始"
           :disabled="mutating"
         >
@@ -1188,8 +1371,10 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
         <!-- 移动位置 -->
         <button
           v-if="torrent"
+          type="button"
           @click="handleSetLocation"
           class="icon-btn"
+          aria-label="移动保存位置"
           title="移动位置"
           :disabled="mutating"
         >
@@ -1199,8 +1384,10 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
         <!-- 单种子限速 -->
         <button
           v-if="torrent"
+          type="button"
           @click="openLimitDialog"
           class="icon-btn"
+          aria-label="编辑单种子限速"
           title="单种子限速"
           :disabled="mutating"
         >
@@ -1210,8 +1397,10 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
         <!-- 重命名（qB） -->
         <button
           v-if="torrent && canRenameTorrent"
+          type="button"
           @click="handleRenameTorrent"
           class="icon-btn"
+          aria-label="重命名种子"
           title="重命名"
           :disabled="mutating"
         >
@@ -1220,8 +1409,10 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
 
         <!-- 关闭 -->
         <button
+          type="button"
           @click="emit('close')"
           class="icon-btn"
+          aria-label="关闭详情面板"
           title="关闭详情面板"
         >
           <Icon name="x" :size="16" />
@@ -1333,7 +1524,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
               </div>
               <div class="w-full bg-gray-200 rounded-full h-3">
                 <div
-                  class="bg-gradient-to-r from-blue-500 to-cyan-500 h-3 rounded-full transition-all duration-300"
+                  class="bg-gradient-to-r from-blue-500 to-cyan-500 h-3 rounded-full transition-[width] duration-300"
                   :style="{ width: `${Math.max(torrent.progress * 100, 1)}%` }"
                 ></div>
               </div>
@@ -1362,7 +1553,8 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                   :value="detail.bandwidthPriority || 'normal'"
                   @click.stop
                   @change="handleBandwidthPriorityChange(($event.target as HTMLSelectElement).value)"
-                  class="bg-transparent text-sm font-medium focus:outline-none"
+                  class="rounded bg-transparent px-2 py-1 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/10"
+                  aria-label="设置带宽优先级"
                   :disabled="mutating"
                 >
                   <option value="low">低</option>
@@ -1372,7 +1564,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
               </div>
 
               <div class="flex justify-end">
-                <button @click="openLimitDialog" class="btn text-sm" :disabled="mutating">编辑限速</button>
+                <button type="button" @click="openLimitDialog" class="btn text-sm" :disabled="mutating">编辑限速</button>
               </div>
             </div>
           </div>
@@ -1444,8 +1636,12 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
               <div v-if="node.type === 'folder'">
                 <div
                   @click="toggleFolder(node.path)"
+                  @keydown="handleFolderRowKeydown($event, node.path)"
                   @contextmenu="openFileContextMenu($event, node)"
                   class="flex items-center py-1.5 hover:bg-gray-50 border-b border-gray-100 cursor-pointer text-sm"
+                  role="button"
+                  tabindex="0"
+                  :aria-label="`${expandedFolders.has(node.path) ? '折叠' : '展开'}文件夹 ${node.name}`"
                 >
                   <!-- 文件名 -->
                   <div
@@ -1462,8 +1658,10 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                       <span class="truncate text-gray-700 flex-1 min-w-0">{{ node.name }}</span>
                       <button
                         v-if="canRenameFolder"
+                        type="button"
                         @click.stop="handleRenamePath(node)"
                         class="ml-2 p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 shrink-0"
+                        aria-label="重命名文件夹"
                         title="重命名文件夹"
                         :disabled="mutating"
                       >
@@ -1471,8 +1669,10 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                       </button>
                       <button
                         v-if="canMoveFolder"
+                        type="button"
                         @click.stop="handleMovePath(node)"
                         class="ml-1 p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 shrink-0"
+                        aria-label="移动文件夹"
                         title="移动文件夹"
                         :disabled="mutating"
                       >
@@ -1491,13 +1691,13 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
 
                   <!-- 进度 -->
                   <div class="px-3" :style="getFlexStyle(filesColumnById, 'progress', false, filesResizeState.isResizing)">
-                    <div class="flex items-center gap-1.5 justify-end">
-                      <div class="flex-1 bg-gray-200 rounded h-1 min-w-0">
-                        <div
-                          class="bg-blue-500 h-1 rounded transition-all"
-                          :style="{ width: `${calculateFolderStats(node).progress * 100}%` }"
-                        />
-                      </div>
+                        <div class="flex items-center gap-1.5 justify-end">
+                          <div class="flex-1 bg-gray-200 rounded h-1 min-w-0">
+                            <div
+                              class="bg-blue-500 h-1 rounded transition-[width] duration-300"
+                              :style="{ width: `${calculateFolderStats(node).progress * 100}%` }"
+                            />
+                          </div>
                       <span class="text-[10px] font-mono text-gray-500 w-8 text-right shrink-0">
                         {{ (calculateFolderStats(node).progress * 100).toFixed(0) }}%
                       </span>
@@ -1517,8 +1717,12 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                     <div v-if="child.type === 'folder'">
                       <div
                         @click="toggleFolder(child.path)"
+                        @keydown="handleFolderRowKeydown($event, child.path)"
                         @contextmenu="openFileContextMenu($event, child)"
                         class="flex items-center py-1.5 hover:bg-gray-50 border-b border-gray-100 cursor-pointer text-sm"
+                        role="button"
+                        tabindex="0"
+                        :aria-label="`${expandedFolders.has(child.path) ? '折叠' : '展开'}文件夹 ${child.name}`"
                       >
                         <!-- 文件名 -->
                         <div
@@ -1535,8 +1739,10 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                             <span class="truncate text-gray-700 flex-1 min-w-0">{{ child.name }}</span>
                             <button
                               v-if="canRenameFolder"
+                              type="button"
                               @click.stop="handleRenamePath(child)"
                               class="ml-2 p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 shrink-0"
+                              aria-label="重命名文件夹"
                               title="重命名文件夹"
                               :disabled="mutating"
                             >
@@ -1544,8 +1750,10 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                             </button>
                             <button
                               v-if="canMoveFolder"
+                              type="button"
                               @click.stop="handleMovePath(child)"
                               class="ml-1 p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 shrink-0"
+                              aria-label="移动文件夹"
                               title="移动文件夹"
                               :disabled="mutating"
                             >
@@ -1564,13 +1772,13 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
 
                         <!-- 进度 -->
                         <div class="px-3" :style="getFlexStyle(filesColumnById, 'progress', false, filesResizeState.isResizing)">
-                          <div class="flex items-center gap-1.5 justify-end">
-                            <div class="flex-1 bg-gray-200 rounded h-1 min-w-0">
-                              <div
-                                class="bg-blue-500 h-1 rounded transition-all"
-                                :style="{ width: `${calculateFolderStats(child).progress * 100}%` }"
-                              />
-                            </div>
+                            <div class="flex items-center gap-1.5 justify-end">
+                              <div class="flex-1 bg-gray-200 rounded h-1 min-w-0">
+                                <div
+                                  class="bg-blue-500 h-1 rounded transition-[width] duration-300"
+                                  :style="{ width: `${calculateFolderStats(child).progress * 100}%` }"
+                                />
+                              </div>
                             <span class="text-[10px] font-mono text-gray-500 w-8 text-right shrink-0">
                               {{ (calculateFolderStats(child).progress * 100).toFixed(0) }}%
                             </span>
@@ -1603,8 +1811,10 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                                 <span class="truncate text-gray-900 flex-1 min-w-0">{{ grandchild.name }}</span>
                                 <button
                                   v-if="canRenameFile"
+                                  type="button"
                                   @click.stop="handleRenamePath(grandchild)"
                                   class="ml-2 p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 shrink-0"
+                                  aria-label="重命名文件"
                                   title="重命名文件"
                                   :disabled="mutating"
                                 >
@@ -1612,8 +1822,10 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                                 </button>
                                 <button
                                   v-if="canMoveFile"
+                                  type="button"
                                   @click.stop="handleMovePath(grandchild)"
                                   class="ml-1 p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 shrink-0"
+                                  aria-label="移动文件"
                                   title="移动文件"
                                   :disabled="mutating"
                                 >
@@ -1635,7 +1847,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                               <div class="flex items-center gap-1.5 justify-end">
                                 <div class="flex-1 bg-gray-200 rounded h-1 min-w-0">
                                   <div
-                                    class="bg-blue-500 h-1 rounded transition-all"
+                                    class="bg-blue-500 h-1 rounded transition-[width] duration-300"
                                     :style="{ width: `${grandchild.progress! * 100}%` }"
                                   />
                                 </div>
@@ -1654,8 +1866,9 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                                 :value="grandchild.priority || 'normal'"
                                 @click.stop
                                 @change="handlePriorityChange(grandchild, ($event.target as HTMLSelectElement).value)"
-                                class="w-full bg-transparent text-xs font-medium focus:outline-none"
+                                class="w-full rounded bg-transparent px-1 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/10"
                                 :class="priorityMap[grandchild.priority || 'normal']?.class || 'text-gray-600'"
+                                aria-label="设置文件优先级"
                                 :disabled="mutating"
                               >
                                 <option value="do_not_download">跳过</option>
@@ -1686,8 +1899,10 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                           <span class="truncate text-gray-900 flex-1 min-w-0">{{ child.name }}</span>
                           <button
                             v-if="canRenameFile"
+                            type="button"
                             @click.stop="handleRenamePath(child)"
                             class="ml-2 p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 shrink-0"
+                            aria-label="重命名文件"
                             title="重命名文件"
                             :disabled="mutating"
                           >
@@ -1695,8 +1910,10 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                           </button>
                           <button
                             v-if="canMoveFile"
+                            type="button"
                             @click.stop="handleMovePath(child)"
                             class="ml-1 p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 shrink-0"
+                            aria-label="移动文件"
                             title="移动文件"
                             :disabled="mutating"
                           >
@@ -1718,7 +1935,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                         <div class="flex items-center gap-1.5 justify-end">
                           <div class="flex-1 bg-gray-200 rounded h-1 min-w-0">
                             <div
-                              class="bg-blue-500 h-1 rounded transition-all"
+                              class="bg-blue-500 h-1 rounded transition-[width] duration-300"
                               :style="{ width: `${child.progress! * 100}%` }"
                             />
                           </div>
@@ -1737,8 +1954,9 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                           :value="child.priority || 'normal'"
                           @click.stop
                           @change="handlePriorityChange(child, ($event.target as HTMLSelectElement).value)"
-                          class="w-full bg-transparent text-xs font-medium focus:outline-none"
+                          class="w-full rounded bg-transparent px-1 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/10"
                           :class="priorityMap[child.priority || 'normal']?.class || 'text-gray-600'"
+                          aria-label="设置文件优先级"
                           :disabled="mutating"
                         >
                           <option value="do_not_download">跳过</option>
@@ -1769,8 +1987,10 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                     <span class="truncate text-gray-900 flex-1 min-w-0">{{ node.name }}</span>
                     <button
                       v-if="canRenameFile"
+                      type="button"
                       @click.stop="handleRenamePath(node)"
                       class="ml-2 p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 shrink-0"
+                      aria-label="重命名文件"
                       title="重命名文件"
                       :disabled="mutating"
                     >
@@ -1778,8 +1998,10 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                     </button>
                     <button
                       v-if="canMoveFile"
+                      type="button"
                       @click.stop="handleMovePath(node)"
                       class="ml-1 p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 shrink-0"
+                      aria-label="移动文件"
                       title="移动文件"
                       :disabled="mutating"
                     >
@@ -1801,7 +2023,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                   <div class="flex items-center gap-1.5 justify-end">
                     <div class="flex-1 bg-gray-200 rounded h-1 min-w-0">
                       <div
-                        class="bg-blue-500 h-1 rounded transition-all"
+                        class="bg-blue-500 h-1 rounded transition-[width] duration-300"
                         :style="{ width: `${node.progress! * 100}%` }"
                       />
                     </div>
@@ -1820,8 +2042,9 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                     :value="node.priority || 'normal'"
                     @click.stop
                     @change="handlePriorityChange(node, ($event.target as HTMLSelectElement).value)"
-                    class="w-full bg-transparent text-xs font-medium focus:outline-none"
+                    class="w-full rounded bg-transparent px-1 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/10"
                     :class="priorityMap[node.priority || 'normal']?.class || 'text-gray-600'"
+                    aria-label="设置文件优先级"
                     :disabled="mutating"
                   >
                     <option value="do_not_download">跳过</option>
@@ -1847,24 +2070,30 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
             class="flex items-center gap-2 px-3 py-2 border-b border-gray-200 bg-gray-50 shrink-0"
           >
             <button
+              type="button"
               @click="handleAddTrackers"
               class="icon-btn"
+              aria-label="添加 Tracker"
               title="添加 Tracker"
               :disabled="mutating"
             >
               <Icon name="plus" :size="16" />
             </button>
             <button
+              type="button"
               @click="handleEditSelectedTracker"
               class="icon-btn"
+              aria-label="编辑已选 Tracker"
               title="编辑 Tracker"
               :disabled="mutating || selectedTrackerUrls.size !== 1"
             >
               <Icon name="edit-2" :size="16" />
             </button>
             <button
+              type="button"
               @click="handleRemoveSelectedTrackers"
               class="icon-btn icon-btn-danger"
+              aria-label="移除已选 Tracker"
               title="移除 Tracker"
               :disabled="mutating || selectedTrackerUrls.size === 0"
             >
@@ -1888,8 +2117,14 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
               v-for="(tracker, index) in detail.trackers"
               :key="index"
               @click="toggleTrackerSelection(tracker.url)"
+              @keydown.enter.prevent="toggleTrackerSelection(tracker.url)"
+              @keydown.space.prevent="toggleTrackerSelection(tracker.url)"
               class="flex items-center py-2 border-b border-gray-100 text-sm cursor-pointer"
               :class="selectedTrackerUrls.has(tracker.url) ? 'bg-blue-50' : 'hover:bg-gray-50'"
+              role="button"
+              tabindex="0"
+              :aria-pressed="selectedTrackerUrls.has(tracker.url)"
+              :aria-label="`选择 Tracker ${tracker.url}`"
             >
               <!-- URL -->
               <div class="min-w-0 px-3" :style="getFlexStyle(trackersColumnById, 'url', false, trackersResizeState.isResizing)">
@@ -1937,16 +2172,20 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
             class="flex items-center gap-2 px-3 py-2 border-b border-gray-200 bg-gray-50 shrink-0"
           >
             <button
+              type="button"
               @click="handleAddPeers"
               class="icon-btn"
+              aria-label="添加 Peers"
               title="添加 Peers"
               :disabled="mutating"
             >
               <Icon name="plus" :size="16" />
             </button>
             <button
+              type="button"
               @click="handleBanSelectedPeers"
               class="icon-btn icon-btn-danger"
+              aria-label="封禁已选 Peers"
               title="封禁已选 Peers（全局）"
               :disabled="mutating || selectedPeers.size === 0"
             >
@@ -1970,8 +2209,14 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
               v-for="(peer, index) in detail.peers"
               :key="index"
               @click="togglePeerSelection(peer)"
+              @keydown.enter.prevent="togglePeerSelection(peer)"
+              @keydown.space.prevent="togglePeerSelection(peer)"
               class="flex items-center py-2 border-b border-gray-100 text-sm cursor-pointer"
               :class="selectedPeers.has(peerKey(peer)) ? 'bg-blue-50' : 'hover:bg-gray-50'"
+              role="button"
+              tabindex="0"
+              :aria-pressed="selectedPeers.has(peerKey(peer))"
+              :aria-label="`选择 Peer ${peer.ip}:${peer.port}`"
             >
               <!-- IP:Port -->
               <div class="px-3 shrink-0" :style="getFlexStyle(peersColumnById, 'address', false, peersResizeState.isResizing)">
@@ -1992,7 +2237,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                 <div class="flex items-center justify-end gap-1.5">
                   <div class="w-10 bg-gray-200 rounded h-1 shrink-0">
                     <div
-                      class="bg-blue-500 h-1 rounded transition-all"
+                      class="bg-blue-500 h-1 rounded transition-[width] duration-300"
                       :style="{ width: `${peer.progress * 100}%` }"
                     />
                   </div>
@@ -2043,10 +2288,10 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
         @click.self="showLimitDialog = false"
       >
         <Transition
-          enter-active-class="transition-all duration-200"
+          enter-active-class="transition duration-200 ease-out"
           enter-from-class="opacity-0 scale-95"
           enter-to-class="opacity-100 scale-100"
-          leave-active-class="transition-all duration-200"
+          leave-active-class="transition duration-150 ease-in"
           leave-from-class="opacity-100 scale-100"
           leave-to-class="opacity-0 scale-95"
         >
@@ -2058,8 +2303,10 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
             <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
               <h2 class="text-lg font-semibold text-gray-900">单种子限速</h2>
               <button
+                type="button"
                 @click="showLimitDialog = false"
                 class="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                aria-label="关闭单种子限速对话框"
               >
                 <Icon name="x" :size="20" class="text-gray-500" />
               </button>
@@ -2096,6 +2343,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
 
               <div class="flex justify-end gap-2 pt-2">
                 <button
+                  type="button"
                   class="btn"
                   @click="showLimitDialog = false"
                   :disabled="mutating"
@@ -2103,6 +2351,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                   取消
                 </button>
                 <button
+                  type="button"
                   class="btn btn-primary"
                   @click="saveLimits"
                   :disabled="mutating"
@@ -2135,6 +2384,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
         <button
           v-for="item in fileMenuItems"
           :key="item.id"
+          type="button"
           @click="item.action()"
           :class="`w-full px-4 py-2 text-left text-sm flex items-center gap-3 ${
             item.disabled ? 'opacity-50 cursor-not-allowed' : 'text-gray-700 hover:bg-gray-50 cursor-pointer'

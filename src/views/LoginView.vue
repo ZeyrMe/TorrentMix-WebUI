@@ -64,7 +64,7 @@ function getBackendName(): string {
         </div>
         <h1 class="text-2xl font-semibold text-gray-900 mb-2">{{ isTransmission ? '连接' : '登录' }}</h1>
         <p class="text-gray-500 text-sm">
-          <span v-if="detecting">正在检测后端...</span>
+          <span v-if="detecting">正在检测后端…</span>
           <span v-else>访问 {{ getBackendName() }}</span>
         </p>
       </div>
@@ -74,30 +74,35 @@ function getBackendName(): string {
         <form @submit.prevent="handleSubmit" class="space-y-4">
           <!-- 用户名 -->
           <div class="space-y-2">
-            <label class="block text-sm font-medium text-gray-700">
+            <label for="login-username" class="block text-sm font-medium text-gray-700">
               {{ isTransmission ? '用户名（可选）' : '用户名' }}
             </label>
             <input
+              id="login-username"
               v-model="username"
+              name="username"
               type="text"
               class="input"
-              placeholder="输入用户名"
+              placeholder="输入用户名…"
               :required="!isTransmission"
               autocomplete="username"
+              :spellcheck="false"
               :disabled="detecting"
             />
           </div>
 
           <!-- 密码 -->
           <div class="space-y-2">
-            <label class="block text-sm font-medium text-gray-700">
+            <label for="login-password" class="block text-sm font-medium text-gray-700">
               {{ isTransmission ? '密码（可选）' : '密码' }}
             </label>
             <input
+              id="login-password"
               v-model="password"
+              name="current-password"
               type="password"
               class="input"
-              placeholder="输入密码"
+              placeholder="输入密码…"
               :required="!isTransmission"
               autocomplete="current-password"
               :disabled="detecting"
@@ -105,7 +110,7 @@ function getBackendName(): string {
           </div>
 
           <!-- 错误提示 -->
-          <div v-if="error" class="p-3 bg-red-50 border border-red-200 rounded-lg">
+          <div v-if="error" class="p-3 bg-red-50 border border-red-200 rounded-lg" aria-live="polite">
             <div class="flex items-center gap-2">
               <Icon name="alert-triangle" color="red" :size="16" />
               <p class="text-sm text-red-500 font-medium">{{ error }}</p>
@@ -116,15 +121,15 @@ function getBackendName(): string {
           <button
             type="submit"
             :disabled="loading || detecting"
-            class="btn-primary w-full py-2.5 font-medium transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+            class="btn btn-primary w-full py-2.5 font-medium"
           >
             <span class="flex items-center justify-center gap-2">
               <Icon v-if="loading" name="loader-2" :size="16" class="animate-spin text-white" />
               {{
                 loading
-                  ? (isTransmission ? '连接中...' : '登录中...')
+                  ? (isTransmission ? '连接中…' : '登录中…')
                   : detecting
-                    ? '检测中...'
+                    ? '检测中…'
                     : (isTransmission ? '连接' : '登录')
               }}
             </span>
@@ -135,7 +140,7 @@ function getBackendName(): string {
       <!-- 底部信息 -->
       <div class="text-center mt-8">
         <p class="text-xs text-gray-400">
-          <span v-if="detecting">正在检测后端类型...</span>
+          <span v-if="detecting">正在检测后端类型…</span>
           <span v-else>{{ getBackendName() }} WebUI</span>
         </p>
       </div>

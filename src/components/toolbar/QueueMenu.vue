@@ -68,11 +68,13 @@ onClickOutside(rootRef, () => {
   <div ref="rootRef" class="relative queue-menu">
     <!-- 队列按钮 -->
     <button
+      type="button"
       @click.stop="toggle"
       class="icon-btn"
       :class="{ 'opacity-50 cursor-not-allowed': disabled }"
       :disabled="disabled"
       title="队列管理"
+      aria-label="队列管理"
     >
       <Icon name="list-ordered" :size="16" />
       <span
@@ -93,6 +95,7 @@ onClickOutside(rootRef, () => {
       </div>
 
       <button
+        type="button"
         v-for="item in menuItems"
         :key="item.action"
         @click="handleAction(item.action)"

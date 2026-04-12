@@ -43,5 +43,7 @@ const colorClass = computed(() => iconColors[props.color as IconColor] || props.
     :is="iconComponent"
     :size="size"
     :class="[colorClass, props.class]"
+    aria-hidden="true"
+    focusable="false"
   />
 </template>

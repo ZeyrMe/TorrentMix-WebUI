@@ -369,9 +369,11 @@ const overflowGroups = computed(() => {
         >
           <template v-for="(item, idx) in group.items" :key="item.id">
             <button
+              type="button"
               :class="classForItem(item, true)"
               :disabled="item.disabled"
               :title="item.title"
+              :aria-label="item.title"
               @click="emit('action', item.id)"
             >
               <Icon :name="item.icon" :size="16" :color="item.color as any" />
@@ -388,11 +390,13 @@ const overflowGroups = computed(() => {
       </template>
       <template v-else>
         <button
+          type="button"
           v-for="item in visibleItems"
           :key="item.id"
           :class="classForItem(item, false)"
           :disabled="item.disabled"
           :title="item.title"
+          :aria-label="item.title"
           @click="emit('action', item.id)"
         >
           <Icon :name="item.icon" :size="16" :color="item.color as any" />
@@ -408,7 +412,7 @@ const overflowGroups = computed(() => {
 
     <!-- Overflow menu -->
     <div v-if="overflowItems.length > 0" ref="overflowPopoverRef" class="relative shrink-0">
-      <button class="icon-btn" :title="overflowTitle" @click.stop="toggleOverflow">
+      <button type="button" class="icon-btn" :title="overflowTitle" :aria-label="overflowTitle" @click.stop="toggleOverflow">
         <Icon name="more-horizontal" :size="16" />
       </button>
       <div
@@ -421,6 +425,7 @@ const overflowGroups = computed(() => {
               {{ group.label }}
             </div>
             <button
+              type="button"
               v-for="item in group.items"
               :key="item.id"
               class="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -446,6 +451,7 @@ const overflowGroups = computed(() => {
       <template v-if="grouped">
         <div v-for="group in allGroups" :key="group.key" class="toolbar-group gap-2">
           <button
+            type="button"
             v-for="item in group.items"
             :key="item.id"
             :class="classForItem(item, true)"
@@ -463,6 +469,7 @@ const overflowGroups = computed(() => {
       </template>
       <template v-else>
         <button
+          type="button"
           v-for="item in itemList"
           :key="item.id"
           :class="classForItem(item, false)"
@@ -477,7 +484,7 @@ const overflowGroups = computed(() => {
           </span>
         </button>
       </template>
-      <button ref="overflowMeasureRef" class="icon-btn">
+      <button ref="overflowMeasureRef" type="button" class="icon-btn">
         <Icon name="more-horizontal" :size="16" />
       </button>
     </div>
