@@ -973,6 +973,11 @@ mod tests {
             }
           }
 
+          if buf.is_empty() {
+            let _ = stream.shutdown().await;
+            return;
+          }
+
           let req = String::from_utf8_lossy(&buf).to_string();
           let resp = handler(req).await;
           let _ = stream.write_all(resp.as_bytes()).await;
