@@ -16,6 +16,7 @@ test('backend taxonomy: qBittorrent exposes category management semantics', () =
   assert.equal(backend.taxonomyFacet.kind, 'category')
   assert.equal(backend.taxonomyFacet.filterLabel, '分类')
   assert.equal(backend.taxonomyFacet.allFilterLabel, '全部分类')
+  assert.equal(backend.taxonomyFacet.rootFilterLabel, '未分类')
   assert.equal(backend.taxonomyFacet.managementTitle, '分类管理')
   assert.equal(backend.taxonomyFacet.canOpenManagement, true)
   assert.equal(backend.taxonomyFacet.canSetTorrentCategory, true)

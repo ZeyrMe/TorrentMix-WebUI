@@ -7,12 +7,17 @@ import { getSwarmTexts, getSwarmTitle } from '@/utils/swarm'
 import Icon from '@/components/Icon.vue'
 import SafeText from '@/components/SafeText.vue'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   torrent: UnifiedTorrent
   selected: boolean
   columns: ColumnState[]
   isResizing?: boolean
-}>()
+  showCategoryMeta?: boolean
+  emptyCategoryLabel?: string
+}>(), {
+  showCategoryMeta: false,
+  emptyCategoryLabel: '未分类',
+})
 
 const emit = defineEmits<{
   click: [event: Event]
@@ -116,6 +121,13 @@ const formatETA = (eta: number, progress: number, state: TorrentState): string =
   const days = Math.floor(hours / 24)
   return `${days}天`
 }
+
+const categoryMetaText = computed(() => {
+  const raw = props.torrent.category ?? ''
+  return raw.trim() === '' ? props.emptyCategoryLabel : raw
+})
+
+const categoryMetaTitle = computed(() => `分类 ${categoryMetaText.value}`)
 </script>
 
 <template>
@@ -167,6 +179,13 @@ const formatETA = (eta: number, progress: number, state: TorrentState): string =
           />
           <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500 mt-0.5">
             <span class="font-mono font-tabular">{{ formatBytes(torrent.size) }}</span>
+            <span
+              v-if="showCategoryMeta"
+              class="inline-block max-w-36 truncate align-bottom md:max-w-48"
+              :title="categoryMetaTitle"
+            >
+              分类 <SafeText as="span" :text="categoryMetaText" />
+            </span>
             <span class="hidden sm:inline">比率 {{ torrent.ratio.toFixed(2) }}</span>
             <span class="hidden md:inline" :title="getSwarmTitle(torrent)">
               做种 {{ getSwarmTexts(torrent).seeds }} 下载 {{ getSwarmTexts(torrent).peers }}

@@ -11,6 +11,8 @@ interface Props {
   columns: ColumnState[]
   scrollElement?: HTMLElement | null
   isResizing?: boolean
+  showCategoryMeta?: boolean
+  emptyCategoryLabel?: string
 }
 
 interface Emits {
@@ -62,6 +64,8 @@ const virtualizer = useVirtualizer({
         :selected="selectedHashes.has(torrents[virtualRow.index]!.id)"
         :columns="columns"
         :is-resizing="isResizing"
+        :show-category-meta="showCategoryMeta"
+        :empty-category-label="emptyCategoryLabel"
         @click="handleRowClick(torrents[virtualRow.index]!.id, $event)"
         @toggle-select="handleToggleSelect"
         @action="(action, hash) => emit('action', action, hash)"
@@ -87,6 +91,8 @@ const virtualizer = useVirtualizer({
       :selected="selectedHashes.has(torrents[virtualRow.index]!.id)"
       :columns="columns"
       :is-resizing="isResizing"
+      :show-category-meta="showCategoryMeta"
+      :empty-category-label="emptyCategoryLabel"
       @click="handleRowClick(torrents[virtualRow.index]!.id, $event)"
       @toggle-select="handleToggleSelect"
       @action="(action, hash) => emit('action', action, hash)"

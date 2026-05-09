@@ -28,7 +28,7 @@ export function resolveBackendTaxonomyFacet(
       kind: 'category',
       filterLabel: '分类',
       allFilterLabel: '全部分类',
-      rootFilterLabel: '',
+      rootFilterLabel: '未分类',
       managementTitle: '分类管理',
       canOpenManagement: true,
       canSetTorrentCategory: true,

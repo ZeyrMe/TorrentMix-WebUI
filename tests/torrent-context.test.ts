@@ -174,6 +174,30 @@ test('torrent controller: syncFilterImmediately keeps debounced filter and appli
   assert.equal(ctx.state.filters.debouncedFilter.value, 'ubuntu')
 })
 
+test('torrent controller: qB empty category filter includes uncategorized torrents', () => {
+  setActivePinia(createPinia())
+
+  const backend = useBackendStore()
+  const torrentStore = useTorrentStore()
+  torrentStore.updateTorrents(new Map([
+    ['a', makeTorrent('a', 'Alpha', { category: '' })],
+    ['b', makeTorrent('b', 'Beta', { category: undefined })],
+    ['c', makeTorrent('c', 'Linux ISO', { category: 'linux' })],
+  ]))
+
+  backend.setAdapter(
+    {
+      fetchList: async () => ({ torrents: torrentStore.torrents }),
+    } as any,
+    { type: 'qbit', version: '5.0.0', major: 5, minor: 0, patch: 0 } as any,
+  )
+
+  const ctx = useTorrentContext({ overlay: createOverlayMock() as any })
+  ctx.state.filters.categoryFilter.value = ''
+
+  assert.deepEqual(ctx.state.data.sortedTorrents.value.map(torrent => torrent.id), ['a', 'b'])
+})
+
 test('torrent controller: context menu action can set category and tags through overlay forms', async () => {
   setActivePinia(createPinia())
 

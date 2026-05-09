@@ -107,6 +107,12 @@ const mobileScrollRef = ref<HTMLElement | null>(null)
 const transFolderPaths = computed(() =>
   Array.from(backendStore.categories.values()).map(c => c.name)
 )
+const qbitCategories = computed(() =>
+  Array.from(backendStore.categories.values()).filter(category => category.name.trim() !== '')
+)
+const showTaxonomyFilter = computed(() =>
+  backendStore.isQbit || backendStore.categories.size > 0
+)
 
 type ScrollAnchor = {
   id?: string
@@ -916,7 +922,7 @@ onUnmounted(() => {
           </div>
 
           <!-- 分类/目录筛选 -->
-          <div v-if="backendStore.categories.size > 0" :class="`mt-4 ${sidebarCollapsed ? 'hidden' : ''}`">
+          <div v-if="showTaxonomyFilter" :class="`mt-4 ${sidebarCollapsed ? 'hidden' : ''}`">
             <h3 :class="`text-xs font-medium text-gray-500 uppercase tracking-wider px-3 mb-2`">
               {{ taxonomyFacet.filterLabel }}
             </h3>
@@ -939,7 +945,16 @@ onUnmounted(() => {
                 <span class="truncate text-sm">{{ taxonomyFacet.allFilterLabel }}</span>
               </button>
               <button
-                v-for="cat in Array.from(backendStore.categories.values())"
+                v-if="backendStore.isQbit"
+                type="button"
+                @click="categoryFilter = ''"
+                :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${categoryFilter === '' ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100'}`"
+              >
+                <Icon name="folder" :size="14" />
+                <span class="truncate text-sm">{{ taxonomyFacet.rootFilterLabel }}</span>
+              </button>
+              <button
+                v-for="cat in qbitCategories"
                 :key="cat.name"
                 type="button"
                 @click="categoryFilter = cat.name"
@@ -1144,6 +1159,8 @@ onUnmounted(() => {
                 :columns="columns"
                 :scroll-element="tableScrollRef"
                 :is-resizing="resizeState.isResizing"
+                :show-category-meta="backendStore.isQbit"
+                :empty-category-label="taxonomyFacet.rootFilterLabel"
                 @click="selectTorrentForDetail"
                 @toggle-select="toggleSelect"
                 @action="handleTorrentAction"
@@ -1159,6 +1176,8 @@ onUnmounted(() => {
                   :selected="uiState.selection.has(torrent.id)"
                   :columns="columns"
                   :is-resizing="resizeState.isResizing"
+                  :show-category-meta="backendStore.isQbit"
+                  :empty-category-label="taxonomyFacet.rootFilterLabel"
                   @click="selectTorrentForDetail(torrent.id, $event)"
                   @toggle-select="toggleSelect($event.detail)"
                   @action="handleTorrentAction"
