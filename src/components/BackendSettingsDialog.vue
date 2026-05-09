@@ -2,12 +2,14 @@
 import { computed, onMounted, ref, toRaw, watch } from 'vue'
 import { useBackendStore } from '@/store/backend'
 import type { TransferSettings, BackendPreferences, BackendCapabilities } from '@/adapter/interface'
+import { resolveInitialBackendSettingsTab, type BackendSettingsTabId } from '@/utils/backendSettingsTabs'
 import Icon from '@/components/Icon.vue'
 import SeedingTab from './settings/tabs/SeedingTab.vue'
 import PathsTab from './settings/tabs/PathsTab.vue'
 
 interface Props {
   open: boolean
+  initialTab?: BackendSettingsTabId
 }
 
 interface Emits {
@@ -21,8 +23,7 @@ const backendStore = useBackendStore()
 const adapter = computed(() => backendStore.adapter)
 
 // 当前激活的 Tab
-type TabId = 'transfer' | 'connection' | 'queue' | 'port' | 'protocol' | 'seeding' | 'paths'
-const activeTab = ref<TabId>('transfer')
+const activeTab = ref<BackendSettingsTabId>('transfer')
 
 const loading = ref(false)
 const saving = ref(false)
@@ -30,7 +31,7 @@ const error = ref('')
 const transferPartial = ref(false)
 
 const contentScrollRef = ref<HTMLElement | null>(null)
-const tabScrollTops = ref<Partial<Record<TabId, number>>>({})
+const tabScrollTops = ref<Partial<Record<BackendSettingsTabId, number>>>({})
 
 // 传输设置表单（使用 TransferSettings）
 const transferForm = ref({
@@ -146,13 +147,13 @@ watch(() => prefsForm.value.queueDownloadEnabled, (val) => {
   }
 })
 
-function saveScrollTop(tab: TabId) {
+function saveScrollTop(tab: BackendSettingsTabId) {
   const el = contentScrollRef.value
   if (!el) return
   tabScrollTops.value[tab] = el.scrollTop
 }
 
-function restoreScrollTop(tab: TabId) {
+function restoreScrollTop(tab: BackendSettingsTabId) {
   const el = contentScrollRef.value
   if (!el) return
   el.scrollTop = tabScrollTops.value[tab] ?? 0
@@ -169,23 +170,27 @@ watch(activeTab, (next, prev) => {
 const tabs = computed(() => {
   const caps = capabilities.value
   return [
-    { id: 'transfer' as TabId, label: '带宽', visible: true },
-    { id: 'connection' as TabId, label: '连接', visible: true },
-    { id: 'queue' as TabId, label: '队列', visible: true },
-    { id: 'port' as TabId, label: '端口', visible: true },
-    { id: 'protocol' as TabId, label: '协议', visible: true },
+    { id: 'transfer' as BackendSettingsTabId, label: '带宽', visible: true },
+    { id: 'connection' as BackendSettingsTabId, label: '连接', visible: true },
+    { id: 'queue' as BackendSettingsTabId, label: '队列', visible: true },
+    { id: 'port' as BackendSettingsTabId, label: '端口', visible: true },
+    { id: 'protocol' as BackendSettingsTabId, label: '协议', visible: true },
     {
-      id: 'seeding' as TabId,
+      id: 'seeding' as BackendSettingsTabId,
       label: '做种',
       visible: !!caps && (caps.hasSeedingRatioLimit || caps.hasSeedingTimeLimit || caps.hasStalledQueue),
     },
     {
-      id: 'paths' as TabId,
+      id: 'paths' as BackendSettingsTabId,
       label: '路径',
       visible: !!caps && (caps.hasDefaultSavePath || caps.hasIncompleteDir || caps.hasCreateSubfolder || caps.hasIncompleteFilesSuffix),
     },
   ].filter(t => t.visible)
 })
+
+function syncInitialTab() {
+  activeTab.value = resolveInitialBackendSettingsTab(tabs.value, props.initialTab)
+}
 
 function toKbps(bytesPerSecond: number) {
   return Math.max(0, Math.round(bytesPerSecond / speedBytes.value))
@@ -304,11 +309,15 @@ async function save() {
 }
 
 watch(() => props.open, (open) => {
-  if (open) load()
+  if (!open) return
+  syncInitialTab()
+  load()
 })
 
 onMounted(() => {
-  if (props.open) load()
+  if (!props.open) return
+  syncInitialTab()
+  load()
 })
 </script>
 

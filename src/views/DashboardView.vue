@@ -26,6 +26,7 @@ import OverflowActionBar, { type OverflowActionItem } from '@/components/toolbar
 import ColumnSettingsDialog from '@/components/ColumnSettingsDialog.vue'
 import BackendSettingsDialog from '@/components/BackendSettingsDialog.vue'
 import CategoryManageDialog from '@/components/CategoryManageDialog.vue'
+import DirectoryManageDialog from '@/components/DirectoryManageDialog.vue'
 import TagManageDialog from '@/components/TagManageDialog.vue'
 import ToolsDialog from '@/components/ToolsDialog.vue'
 import FolderTree from '@/components/FolderTree.vue'
@@ -34,6 +35,7 @@ import TorrentContextMenu from '@/components/torrent/contextmenu/TorrentContextM
 import SafeText from '@/components/SafeText.vue'
 import QueueMenu from '@/components/toolbar/QueueMenu.vue'
 import ServerSwitchMenu from '@/components/toolbar/ServerSwitchMenu.vue'
+import type { BackendSettingsTabId } from '@/utils/backendSettingsTabs'
 
 // 虚拟滚动阈值：超过 200 个种子时启用虚拟滚动（性能优化）
 const VIRTUAL_SCROLL_THRESHOLD = 200
@@ -96,6 +98,7 @@ const {
 } = actions
 
 const capabilities = computed(() => backendStore.capabilities)
+const taxonomyFacet = computed(() => backendStore.taxonomyFacet)
 
 const sidebarCollapsed = ref(false)
 const tableScrollRef = ref<HTMLElement | null>(null)
@@ -201,10 +204,12 @@ const showAddDialog = ref(false)
 
 // 分类/标签管理对话框
 const showCategoryManage = ref(false)
+const showDirectoryManage = ref(false)
 const showTagManage = ref(false)
 const showColumnSettings = ref(false)
 const showBackendSettings = ref(false)
 const showToolsDialog = ref(false)
+const backendSettingsInitialTab = ref<BackendSettingsTabId | undefined>()
 
 // 底部详情面板
 const showDetailPanel = ref(false)
@@ -496,7 +501,12 @@ function handleToolbarAction(actionId: string) {
       void handleBatchSpeedLimit()
       break
     case 'categoryManage':
-      showCategoryManage.value = true
+      if (!taxonomyFacet.value.canOpenManagement) break
+      if (taxonomyFacet.value.kind === 'directory') {
+        showDirectoryManage.value = true
+      } else {
+        showCategoryManage.value = true
+      }
       break
     case 'tagManage':
       showTagManage.value = true
@@ -505,12 +515,32 @@ function handleToolbarAction(actionId: string) {
       showColumnSettings.value = true
       break
     case 'backendSettings':
-      showBackendSettings.value = true
+      openBackendSettings()
       break
     case 'tools':
       showToolsDialog.value = true
       break
   }
+}
+
+function openBackendSettings(initialTab?: BackendSettingsTabId) {
+  backendSettingsInitialTab.value = initialTab
+  showBackendSettings.value = true
+}
+
+function closeBackendSettings() {
+  showBackendSettings.value = false
+  backendSettingsInitialTab.value = undefined
+  void immediateRefresh()
+}
+
+function handleDirectoryManageSelect(path: string) {
+  categoryFilter.value = path
+}
+
+function handleDirectoryManageOpenSettings(initialTab: BackendSettingsTabId) {
+  showDirectoryManage.value = false
+  openBackendSettings(initialTab)
 }
 
 const toolbarPrimaryItems = computed<OverflowActionItem[]>(() => [
@@ -535,7 +565,7 @@ const toolbarSelectItems = computed<OverflowActionItem[]>(() => [
 
 const toolbarManageItems = computed<OverflowActionItem[]>(() => [
   { id: 'columns', title: '列设置', icon: 'columns-3', pinned: false, priority: 10, group: 'manage', groupLabel: '管理' },
-  { id: 'categoryManage', title: '分类管理', icon: 'folder', show: backendStore.isQbit, pinned: false, priority: 11, group: 'manage', groupLabel: '管理' },
+  { id: 'categoryManage', title: taxonomyFacet.value.managementTitle, icon: 'folder', show: taxonomyFacet.value.canOpenManagement, pinned: false, priority: 11, group: 'manage', groupLabel: '管理' },
   { id: 'tagManage', title: '标签管理', icon: 'tag', show: backendStore.isQbit || backendStore.isTrans, pinned: false, priority: 12, group: 'manage', groupLabel: '管理' },
   { id: 'backendSettings', title: '设置', icon: 'settings', pinned: false, priority: 13, group: 'manage', groupLabel: '管理' },
   { id: 'tools', title: '工具', icon: 'activity', show: capabilities.value.hasLogs || capabilities.value.hasRss || capabilities.value.hasSearch, pinned: false, priority: 14, group: 'manage', groupLabel: '管理' },
@@ -882,15 +912,15 @@ onUnmounted(() => {
           <!-- 分类/目录筛选 -->
           <div v-if="backendStore.categories.size > 0" :class="`mt-4 ${sidebarCollapsed ? 'hidden' : ''}`">
             <h3 :class="`text-xs font-medium text-gray-500 uppercase tracking-wider px-3 mb-2`">
-              {{ backendStore.isTrans ? '目录' : '分类' }}
+              {{ taxonomyFacet.filterLabel }}
             </h3>
 
             <FolderTree
-              v-if="backendStore.isTrans"
+              v-if="taxonomyFacet.kind === 'directory'"
               v-model="categoryFilter"
               :paths="transFolderPaths"
-              all-label="全部目录"
-              root-label="默认目录"
+              :all-label="taxonomyFacet.allFilterLabel"
+              :root-label="taxonomyFacet.rootFilterLabel"
             />
 
             <div v-else class="space-y-1">
@@ -900,7 +930,7 @@ onUnmounted(() => {
                 :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${categoryFilter === 'all' ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100'}`"
               >
                 <Icon name="folder" :size="14" />
-                <span class="truncate text-sm">全部分类</span>
+                <span class="truncate text-sm">{{ taxonomyFacet.allFilterLabel }}</span>
               </button>
               <button
                 v-for="cat in Array.from(backendStore.categories.values())"
@@ -1229,7 +1259,8 @@ onUnmounted(() => {
     <!-- 后端设置对话框 -->
     <BackendSettingsDialog
       :open="showBackendSettings"
-      @close="showBackendSettings = false; immediateRefresh()"
+      :initial-tab="backendSettingsInitialTab"
+      @close="closeBackendSettings"
     />
 
     <!-- 工具对话框（Logs / RSS / Search） -->
@@ -1244,6 +1275,16 @@ onUnmounted(() => {
       @close="showCategoryManage = false; immediateRefresh()"
     />
 
+    <!-- Transmission 目录管理对话框 -->
+    <DirectoryManageDialog
+      v-if="showDirectoryManage"
+      :categories="backendStore.categories"
+      :model-value="categoryFilter"
+      @update:model-value="handleDirectoryManageSelect"
+      @open-settings="handleDirectoryManageOpenSettings"
+      @close="showDirectoryManage = false"
+    />
+
     <!-- 标签管理对话框 -->
     <TagManageDialog
       v-if="showTagManage"
@@ -1256,7 +1297,7 @@ onUnmounted(() => {
       :x="contextmenuState.x"
       :y="contextmenuState.y"
       :hashes="contextmenuState.hashes"
-      :can-set-category="backendStore.isQbit"
+      :can-set-category="taxonomyFacet.canSetTorrentCategory"
       :can-queue="capabilities.hasTorrentQueue"
       @close="closeContextMenu"
       @action="handleContextMenuAction"

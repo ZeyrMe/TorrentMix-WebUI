@@ -3,6 +3,7 @@ import { ref, computed, shallowRef } from 'vue'
 import type { BaseAdapter, BackendCapabilities } from '@/adapter/interface'
 import type { Category, ServerState } from '@/adapter/types'
 import type { BackendVersion } from '@/adapter/detect'
+import { resolveBackendTaxonomyFacet } from '@/utils/backendTaxonomy'
 
 /**
  * 后端全局 Store
@@ -63,6 +64,7 @@ export const useBackendStore = defineStore('backend', () => {
   const isInitialized = computed(() => adapter.value !== null)
   const isQbit = computed(() => backendType.value === 'qbit')
   const isTrans = computed(() => backendType.value === 'trans')
+  const taxonomyFacet = computed(() => resolveBackendTaxonomyFacet(backendType.value))
   const backendName = computed(() =>
     backendType.value === 'qbit' ? 'qBittorrent' :
     backendType.value === 'trans' ? 'Transmission' : '种子管理器'
@@ -132,6 +134,7 @@ export const useBackendStore = defineStore('backend', () => {
     isInitialized,
     isQbit,
     isTrans,
+    taxonomyFacet,
     backendName,
     versionDisplay,
     categories,
