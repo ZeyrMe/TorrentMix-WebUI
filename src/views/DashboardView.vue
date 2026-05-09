@@ -781,7 +781,7 @@ onUnmounted(() => {
           <h2 class="font-medium text-gray-900">筛选</h2>
           <button
             type="button"
-            class="btn p-2 hover:bg-gray-100"
+            class="icon-btn"
             aria-label="关闭筛选侧栏"
             @click="sidebarCollapsed = true"
           >
@@ -790,11 +790,17 @@ onUnmounted(() => {
         </div>
 
         <!-- 桌面端侧边栏头部 -->
-        <div v-else class="p-4 border-b border-gray-200 flex items-center justify-between">
+        <div
+          v-else
+          :class="[
+            'border-b border-gray-200 flex items-center',
+            sidebarCollapsed ? 'justify-center px-0 py-4' : 'justify-between p-4'
+          ]"
+        >
           <h2 :class="`font-medium text-gray-900 ${sidebarCollapsed ? 'hidden' : ''}`">TorrentMix UI</h2>
           <button
             type="button"
-            class="btn p-2 hover:bg-gray-100"
+            class="icon-btn"
             :aria-label="sidebarCollapsed ? '展开筛选侧栏' : '折叠筛选侧栏'"
             @click="sidebarCollapsed = !sidebarCollapsed"
           >

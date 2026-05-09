@@ -96,30 +96,6 @@ const getStateIcon = (state: TorrentState): { name: string; color: 'blue' | 'cya
   return icons[state]
 }
 
-// 计算健康度百分比（偏向“可下载性”：做种数越多越健康）
-const getHealthPercentage = (torrent: UnifiedTorrent): number | null => {
-  const hasSeeds = torrent.numSeeds !== undefined && torrent.numSeeds !== null
-  const hasPeers = torrent.numPeers !== undefined && torrent.numPeers !== null
-  const hasConnectedSeeds = torrent.connectedSeeds !== undefined && torrent.connectedSeeds !== null
-  const hasConnectedPeers = torrent.connectedPeers !== undefined && torrent.connectedPeers !== null
-  if (!hasSeeds && !hasPeers && !hasConnectedSeeds && !hasConnectedPeers) return null
-
-  // 健康度以“可用性”为主：优先看 swarm 总做种/总下载者（numSeeds/numPeers 已做兼容）。
-  const seeds = torrent.numSeeds ?? torrent.connectedSeeds ?? 0
-  const peers = torrent.numPeers ?? torrent.connectedPeers ?? 0
-
-  if (seeds >= 10) return 100
-  if (seeds >= 5) return 80
-  if (seeds >= 1) return 50
-  if (peers > 0) return 10
-  return 0
-}
-
-function formatHealth(torrent: UnifiedTorrent): string {
-  const value = getHealthPercentage(torrent)
-  return value === null ? '--' : `${value}%`
-}
-
 // 格式化ETA
 const formatETA = (eta: number, progress: number, state: TorrentState): string => {
   // 已完成或错误状态显示无限
@@ -189,16 +165,12 @@ const formatETA = (eta: number, progress: number, state: TorrentState): string =
             class="font-medium text-gray-900 truncate text-sm leading-5"
             :text="torrent.name"
           />
-          <div class="flex items-center gap-3 text-xs text-gray-500 mt-0.5">
+          <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500 mt-0.5">
             <span class="font-mono font-tabular">{{ formatBytes(torrent.size) }}</span>
-            <span class="hidden sm:inline">•</span>
             <span class="hidden sm:inline">比率 {{ torrent.ratio.toFixed(2) }}</span>
-            <span class="hidden md:inline">•</span>
             <span class="hidden md:inline" :title="getSwarmTitle(torrent)">
-              做种 {{ getSwarmTexts(torrent).seeds }} • 下载 {{ getSwarmTexts(torrent).peers }}
+              做种 {{ getSwarmTexts(torrent).seeds }} 下载 {{ getSwarmTexts(torrent).peers }}
             </span>
-            <span class="hidden lg:inline">•</span>
-            <span class="hidden lg:inline">健康度 {{ formatHealth(torrent) }}</span>
           </div>
         </div>
       </div>
