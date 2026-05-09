@@ -4,7 +4,7 @@
 
 **One frontend. Two backends. Zero compromise.**
 
-[![Build](https://img.shields.io/github/actions/workflow/status/YunFeng86/TorrentMix-WebUI/release.yml?style=flat-square&label=build)](../../actions) [![Release](https://img.shields.io/github/v/release/YunFeng86/TorrentMix-WebUI?style=flat-square)](../../releases/latest) [![License](https://img.shields.io/github/license/YunFeng86/TorrentMix-WebUI?style=flat-square)](LICENSE) [![Vue](https://img.shields.io/badge/Vue-3.5-42b883?style=flat-square&logo=vue.js)](https://vuejs.org/) [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178c6?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
+[![Build](https://img.shields.io/github/actions/workflow/status/ZeyrMe/TorrentMix-WebUI/release.yml?style=flat-square&label=build)](../../actions) [![Release](https://img.shields.io/github/v/release/ZeyrMe/TorrentMix-WebUI?style=flat-square)](../../releases/latest) [![License](https://img.shields.io/github/license/ZeyrMe/TorrentMix-WebUI?style=flat-square)](LICENSE) [![Vue](https://img.shields.io/badge/Vue-3.5-42b883?style=flat-square&logo=vue.js)](https://vuejs.org/) [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178c6?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
 
 [Getting Started](#getting-started) · [Deployment](#deployment) · [Local Development](#local-development) · [Contributing](#contributing)
 
@@ -49,7 +49,7 @@ docker run -d \
   -p 8888:8080 \
   -e TORRENTMIX_DB_KEY='replace-with-a-long-random-string' \
   -v torrentmix-catalog:/config \
-  yunfeng86/torrentmix-webui
+  ZeyrMe/torrentmix-webui
 ```
 
 Then open `http://localhost:8888` and add your first backend in **Switch Server → Manage Servers**. See [deploy/standalone-service/README.md](deploy/standalone-service/README.md) for full options.
@@ -127,7 +127,7 @@ The `dist.zip` contract guarantees that `index.html` and its referenced assets l
 **Requirements:** Node.js 20+ (tests require Node.js 22.6+, CI uses Node.js 24), pnpm 10+ (via Corepack recommended)
 
 ```bash
-git clone https://github.com/YunFeng86/TorrentMix-WebUI.git
+git clone https://github.com/ZeyrMe/TorrentMix-WebUI.git
 cd TorrentMix-WebUI
 corepack enable
 pnpm install

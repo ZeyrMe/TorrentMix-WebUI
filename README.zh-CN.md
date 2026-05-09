@@ -4,7 +4,7 @@
 
 **一套前端，双后端 —— qBittorrent & Transmission 通用**
 
-[![Build](https://img.shields.io/github/actions/workflow/status/YunFeng86/TorrentMix-WebUI/release.yml?style=flat-square&label=构建)](../../actions) [![Release](https://img.shields.io/github/v/release/YunFeng86/TorrentMix-WebUI?style=flat-square)](../../releases/latest) [![License](https://img.shields.io/github/license/YunFeng86/TorrentMix-WebUI?style=flat-square)](LICENSE) [![Vue](https://img.shields.io/badge/Vue-3.5-42b883?style=flat-square&logo=vue.js)](https://vuejs.org/) [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178c6?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
+[![Build](https://img.shields.io/github/actions/workflow/status/ZeyrMe/TorrentMix-WebUI/release.yml?style=flat-square&label=构建)](../../actions) [![Release](https://img.shields.io/github/v/release/ZeyrMe/TorrentMix-WebUI?style=flat-square)](../../releases/latest) [![License](https://img.shields.io/github/license/ZeyrMe/TorrentMix-WebUI?style=flat-square)](LICENSE) [![Vue](https://img.shields.io/badge/Vue-3.5-42b883?style=flat-square&logo=vue.js)](https://vuejs.org/) [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178c6?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
 
 [快速开始](#快速开始) · [部署方案](#部署方案) · [本地开发](#本地开发) · [贡献指南](#贡献指南)
 
@@ -49,7 +49,7 @@ docker run -d \
   -p 8888:8080 \
   -e TORRENTMIX_DB_KEY='replace-with-a-long-random-string' \
   -v torrentmix-catalog:/config \
-  yunfeng86/torrentmix-webui
+  ZeyrMe/torrentmix-webui
 ```
 
 然后访问 `http://localhost:8888`，通过 **切换服务器 → 管理服务器** 创建第一个后端。详见 [deploy/standalone-service/README.md](deploy/standalone-service/README.md)。
@@ -127,7 +127,7 @@ Sidecar 约束：
 **环境要求**：Node.js 20+（运行测试需 Node.js 22.6+，CI 使用 Node.js 24），pnpm 10+（推荐通过 Corepack）
 
 ```bash
-git clone https://github.com/YunFeng86/TorrentMix-WebUI.git
+git clone https://github.com/ZeyrMe/TorrentMix-WebUI.git
 cd TorrentMix-WebUI
 corepack enable
 pnpm install

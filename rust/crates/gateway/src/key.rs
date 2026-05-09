@@ -9,7 +9,7 @@ use getrandom::fill as fill_random;
 use keyring::{Entry, Error as KeyringError};
 
 pub const ENV_MASTER_KEY: &str = "TORRENTMIX_DB_KEY";
-const DEFAULT_KEYRING_SERVICE: &str = "io.github.yunfeng86.torrentmix";
+const DEFAULT_KEYRING_SERVICE: &str = "io.github.ZeyrMe.torrentmix";
 const DEFAULT_KEYRING_ACCOUNT: &str = "gateway-catalog-db";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
