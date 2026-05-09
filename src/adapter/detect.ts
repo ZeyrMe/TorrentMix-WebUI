@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { getQbitBaseUrl, silentApiClient } from '@/api/client'
-import { transClient } from '@/api/trans-client'
+import { hasConfiguredTransUrl, transClient } from '@/api/trans-client'
 
 export type BackendType = 'qbit' | 'trans' | 'unknown'
 
@@ -41,6 +41,32 @@ function getHeader(headers: Record<string, unknown> | undefined, key: string): s
   const val = (headers as any)[lower] ?? (headers as any)[key] ?? (headers as any)[key.toLowerCase()]
   if (typeof val === 'string' && val.trim()) return val.trim()
   return undefined
+}
+
+function unknownTransmissionVersion(rpcSemver?: string): BackendVersion {
+  return {
+    type: 'trans',
+    version: 'unknown',
+    major: 0,
+    minor: 0,
+    patch: 0,
+    rpcSemver,
+    isUnknown: true,
+  }
+}
+
+function parseTransmissionVersionArgs(args: Record<string, any> | undefined): BackendVersion {
+  const version = args?.version || 'unknown'
+  const rpcSemver = args?.['rpc-version-semver'] || args?.rpcVersionSemver
+  const parsed = version === 'unknown' ? { major: 0, minor: 0, patch: 0 } : parseVersion(version)
+
+  return {
+    type: 'trans',
+    version,
+    ...parsed,
+    rpcSemver,
+    isUnknown: version === 'unknown',
+  }
 }
 
 async function probeTransmissionWithRetry(
@@ -167,6 +193,12 @@ export async function detectBackendTypeOnly(timeout = 3000): Promise<BackendType
     return forced
   }
 
+  // 显式配置 Transmission 地址时跳过探测，避免密码保护的 TR 触发浏览器 Basic Auth 弹窗。
+  if (hasConfiguredTransUrl()) {
+    backendTypeCache = { type: 'trans', timestamp: Date.now() }
+    return 'trans'
+  }
+
   // 仅内存缓存：刷新页面即失效（按要求不使用 localStorage）
   if (backendTypeCache && Date.now() - backendTypeCache.timestamp < BACKEND_TYPE_CACHE_DURATION) {
     return backendTypeCache.type
@@ -198,6 +230,18 @@ export async function detectBackendTypeOnly(timeout = 3000): Promise<BackendType
 
   // 保守策略：默认 qBittorrent
   return 'qbit'
+}
+
+export async function detectTransmissionWithVersionAuth(): Promise<BackendVersion> {
+  try {
+    const res = await transClient.post('', { method: 'session-get' })
+    const args = res.data?.arguments ?? res.data?.result
+    if (args && typeof args === 'object') {
+      return parseTransmissionVersionArgs(args)
+    }
+  } catch {}
+
+  return unknownTransmissionVersion()
 }
 
 /**
@@ -247,40 +291,9 @@ export async function detectBackendWithVersionAuth(_timeout = 3000): Promise<Bac
     }
   }
 
-  // 强制 Transmission：只尝试 TR
-  if (forced === 'trans') {
-    try {
-      const res = await transClient.post('', { method: 'session-get' })
-
-      let version = 'unknown'
-      let rpcSemver: string | undefined
-
-      if (res.data?.arguments) {
-        version = res.data.arguments.version || 'unknown'
-        rpcSemver = res.data.arguments['rpc-version-semver'] || res.data.arguments.rpcVersionSemver
-      }
-
-      // 防止把未知版本伪装成 4.0.0（parseVersion 的默认值对 qB 是合理的，但对 Transmission 会误导逻辑分支）
-      const parsed = version === 'unknown' ? { major: 0, minor: 0, patch: 0 } : parseVersion(version)
-      const isUnknown = version === 'unknown'
-
-      return {
-        type: 'trans',
-        version,
-        ...parsed,
-        rpcSemver,
-        isUnknown
-      }
-    } catch {}
-
-    return {
-      type: 'trans',
-      version: 'unknown',
-      major: 0,
-      minor: 0,
-      patch: 0,
-      isUnknown: true
-    }
+  // 强制或显式配置 Transmission：只尝试带凭据的 TR 探测。
+  if (forced === 'trans' || hasConfiguredTransUrl()) {
+    return detectTransmissionWithVersionAuth()
   }
 
   // 自动探测：优先尝试 qBittorrent
@@ -315,26 +328,7 @@ export async function detectBackendWithVersionAuth(_timeout = 3000): Promise<Bac
 
   // 尝试 Transmission
   try {
-    const res = await transClient.post('', { method: 'session-get' })
-
-    let version = 'unknown'
-    let rpcSemver: string | undefined
-
-    if (res.data?.arguments) {
-      version = res.data.arguments.version || 'unknown'
-      rpcSemver = res.data.arguments['rpc-version-semver'] || res.data.arguments.rpcVersionSemver
-    }
-
-    const parsed = version === 'unknown' ? { major: 0, minor: 0, patch: 0 } : parseVersion(version)
-    const isUnknown = version === 'unknown'
-
-    return {
-      type: 'trans',
-      version,
-      ...parsed,
-      rpcSemver,
-      isUnknown
-    }
+    return await detectTransmissionWithVersionAuth()
   } catch {}
 
   // 保守策略：检测失败返回 qBittorrent v4
@@ -353,6 +347,12 @@ export async function detectBackendWithVersionAuth(_timeout = 3000): Promise<Bac
  */
 export async function detectBackendWithVersion(timeout = 3000): Promise<BackendVersion> {
   const forced = getForcedBackend()
+
+  // 强制或显式配置 Transmission 时，不做未认证探测，避免浏览器弹 Basic Auth。
+  if (forced === 'trans' || hasConfiguredTransUrl()) {
+    return unknownTransmissionVersion()
+  }
+
   const useRelativePath = shouldUseRelativePath()
   const qbitBaseURL = useRelativePath ? '' : getQbitBaseUrl()
 
@@ -393,23 +393,6 @@ export async function detectBackendWithVersion(timeout = 3000): Promise<BackendV
       type: 'qbit',
       version: 'unknown',
       major: 4,
-      minor: 0,
-      patch: 0,
-      isUnknown: true
-    }
-  }
-
-  // 强制 Transmission：只尝试 TR
-  if (forced === 'trans') {
-    try {
-      const res = await probeTransmissionWithRetry(transDetector, transRpcUrl)
-      if (res) return { type: 'trans', ...res }
-    } catch {}
-
-    return {
-      type: 'trans',
-      version: 'unknown',
-      major: 0,
       minor: 0,
       patch: 0,
       isUnknown: true

@@ -1,9 +1,41 @@
 import test, { mock } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { transClient } from '../src/api/trans-client.ts'
+import { clearTransSessionAuth, clearTransSessionId, restoreTransSessionAuth, transClient } from '../src/api/trans-client.ts'
 import { TransAdapter } from '../src/adapter/trans/index.ts'
 import { VIRTUAL_ROOT_EXTERNAL_PREFIX } from '../src/utils/folderTree.ts'
+
+function createFakeStorage(): Storage {
+  const data = new Map<string, string>()
+  return {
+    get length() {
+      return data.size
+    },
+    clear: () => data.clear(),
+    getItem: (key: string) => data.get(key) ?? null,
+    key: (index: number) => Array.from(data.keys())[index] ?? null,
+    removeItem: (key: string) => {
+      data.delete(key)
+    },
+    setItem: (key: string, value: string) => {
+      data.set(key, value)
+    },
+  } as Storage
+}
+
+function installSessionStorage(storage = createFakeStorage()): () => void {
+  const g = globalThis as typeof globalThis & { window?: any }
+  const originalWindow = g.window
+  g.window = { ...(originalWindow ?? {}), sessionStorage: storage }
+
+  return () => {
+    if (originalWindow === undefined) {
+      delete g.window
+    } else {
+      g.window = originalWindow
+    }
+  }
+}
 
 test('Transmission: checkSession should succeed without Basic Auth when backend is open', async () => {
   const adapter = new TransAdapter()
@@ -56,6 +88,93 @@ test('Transmission: login should trim Basic Auth credentials', async () => {
   } finally {
     transClient.defaults.auth = originalAuth
     mock.restoreAll()
+  }
+})
+
+test('Transmission: login should persist Basic Auth in sessionStorage for refresh restore', async () => {
+  const restoreWindow = installSessionStorage()
+  const adapter = new TransAdapter()
+  const originalAuth = transClient.defaults.auth
+
+  try {
+    clearTransSessionAuth()
+
+    mock.method(transClient as any, 'post', async (_url: string, payload: any) => {
+      assert.equal(payload.method, 'session-get')
+      return {
+        data: {
+          result: 'success',
+          arguments: {},
+        },
+      }
+    })
+
+    await adapter.login('  admin  ', '  pass  ')
+    assert.deepEqual(transClient.defaults.auth, { username: 'admin', password: 'pass' })
+
+    transClient.defaults.auth = undefined
+    clearTransSessionId()
+
+    assert.equal(restoreTransSessionAuth(), true)
+    assert.deepEqual(transClient.defaults.auth, { username: 'admin', password: 'pass' })
+  } finally {
+    mock.restoreAll()
+    clearTransSessionAuth()
+    transClient.defaults.auth = originalAuth
+    restoreWindow()
+  }
+})
+
+test('Transmission: failed login should clear temporary Basic Auth and stored credentials', async () => {
+  const restoreWindow = installSessionStorage()
+  const adapter = new TransAdapter()
+  const originalAuth = transClient.defaults.auth
+
+  try {
+    clearTransSessionAuth()
+
+    mock.method(transClient as any, 'post', async () => {
+      throw new Error('Unauthorized')
+    })
+
+    await assert.rejects(() => adapter.login('admin', 'bad-pass'), /Unauthorized/)
+    assert.equal(transClient.defaults.auth, undefined)
+    assert.equal(restoreTransSessionAuth(), false)
+  } finally {
+    mock.restoreAll()
+    clearTransSessionAuth()
+    transClient.defaults.auth = originalAuth
+    restoreWindow()
+  }
+})
+
+test('Transmission: logout should clear persisted Basic Auth and cached session id', async () => {
+  const restoreWindow = installSessionStorage()
+  const adapter = new TransAdapter()
+  const originalAuth = transClient.defaults.auth
+
+  try {
+    clearTransSessionAuth()
+
+    mock.method(transClient as any, 'post', async () => ({
+      data: {
+        result: 'success',
+        arguments: {},
+      },
+    }))
+
+    await adapter.login('admin', 'pass')
+    transClient.defaults.headers['X-Transmission-Session-Id'] = 'sid'
+    await adapter.logout()
+
+    assert.equal(transClient.defaults.auth, undefined)
+    assert.equal((transClient.defaults.headers as any)['X-Transmission-Session-Id'], undefined)
+    assert.equal(restoreTransSessionAuth(), false)
+  } finally {
+    mock.restoreAll()
+    clearTransSessionAuth()
+    transClient.defaults.auth = originalAuth
+    restoreWindow()
   }
 })
 

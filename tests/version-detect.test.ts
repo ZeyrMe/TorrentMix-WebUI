@@ -2,7 +2,7 @@ import test, { mock } from 'node:test'
 import assert from 'node:assert/strict'
 
 import axios from 'axios'
-import { detectBackendWithVersion, detectBackendWithVersionAuth } from '../src/adapter/detect.ts'
+import { detectBackendTypeOnly, detectBackendWithVersion, detectBackendWithVersionAuth } from '../src/adapter/detect.ts'
 import { transClient } from '../src/api/trans-client.ts'
 
 test('version detection: detectBackendWithVersion parses qBittorrent version', async () => {
@@ -199,6 +199,51 @@ test('version detection: detectBackendWithVersionAuth does not default unknown T
   } finally {
     if (prev === undefined) delete process.env.VITE_BACKEND_TYPE
     else process.env.VITE_BACKEND_TYPE = prev
+    mock.restoreAll()
+  }
+})
+
+test('version detection: VITE_TR_URL makes type detection return Transmission without probing', async () => {
+  const prev = process.env.VITE_TR_URL
+  process.env.VITE_TR_URL = 'http://localhost:9091/transmission/rpc'
+
+  let createCalled = 0
+  mock.method(axios as any, 'create', () => {
+    createCalled++
+    throw new Error('axios.create should not be called when VITE_TR_URL is set')
+  })
+
+  try {
+    const type = await detectBackendTypeOnly(1000)
+    assert.equal(type, 'trans')
+    assert.equal(createCalled, 0)
+  } finally {
+    if (prev === undefined) delete process.env.VITE_TR_URL
+    else process.env.VITE_TR_URL = prev
+    mock.restoreAll()
+  }
+})
+
+test('version detection: VITE_TR_URL skips unauthenticated Transmission version probing', async () => {
+  const prev = process.env.VITE_TR_URL
+  process.env.VITE_TR_URL = 'http://localhost:9091/transmission/rpc'
+
+  let createCalled = 0
+  mock.method(axios as any, 'create', () => {
+    createCalled++
+    throw new Error('axios.create should not be called when VITE_TR_URL is set')
+  })
+
+  try {
+    const v = await detectBackendWithVersion(1000)
+    assert.equal(v.type, 'trans')
+    assert.equal(v.version, 'unknown')
+    assert.equal(v.major, 0)
+    assert.equal(v.isUnknown, true)
+    assert.equal(createCalled, 0)
+  } finally {
+    if (prev === undefined) delete process.env.VITE_TR_URL
+    else process.env.VITE_TR_URL = prev
     mock.restoreAll()
   }
 })

@@ -4,6 +4,39 @@ import { createPinia, setActivePinia } from 'pinia'
 
 import { useAuthStore } from '../src/store/auth.ts'
 import { useBackendStore } from '../src/store/backend.ts'
+import { clearTransSessionAuth, restoreTransSessionAuth, saveTransSessionAuth, transClient } from '../src/api/trans-client.ts'
+
+function createFakeStorage(): Storage {
+  const data = new Map<string, string>()
+  return {
+    get length() {
+      return data.size
+    },
+    clear: () => data.clear(),
+    getItem: (key: string) => data.get(key) ?? null,
+    key: (index: number) => Array.from(data.keys())[index] ?? null,
+    removeItem: (key: string) => {
+      data.delete(key)
+    },
+    setItem: (key: string, value: string) => {
+      data.set(key, value)
+    },
+  } as Storage
+}
+
+function installSessionStorage(storage = createFakeStorage()): () => void {
+  const g = globalThis as typeof globalThis & { window?: any }
+  const originalWindow = g.window
+  g.window = { ...(originalWindow ?? {}), sessionStorage: storage }
+
+  return () => {
+    if (originalWindow === undefined) {
+      delete g.window
+    } else {
+      g.window = originalWindow
+    }
+  }
+}
 
 test('auth: login sets authenticated and initializes backend adapter (injected deps)', async () => {
   setActivePinia(createPinia())
@@ -116,6 +149,29 @@ test('auth: disconnect blocks session restore until next login', async () => {
   assert.equal(called, 0)
 })
 
+test('auth: disconnect clears persisted Transmission Basic Auth', async () => {
+  const restoreWindow = installSessionStorage()
+  const originalAuth = transClient.defaults.auth
+
+  try {
+    setActivePinia(createPinia())
+    clearTransSessionAuth()
+
+    const auth = useAuthStore()
+    saveTransSessionAuth('admin', 'pass')
+
+    assert.equal(restoreTransSessionAuth(), true)
+    auth.disconnect()
+
+    transClient.defaults.auth = undefined
+    assert.equal(restoreTransSessionAuth(), false)
+  } finally {
+    clearTransSessionAuth()
+    transClient.defaults.auth = originalAuth
+    restoreWindow()
+  }
+})
+
 test('auth: checkSession sets isSecuredConnection from adapter.hasCredentials', async () => {
   setActivePinia(createPinia())
 
@@ -130,6 +186,85 @@ test('auth: checkSession sets isSecuredConnection from adapter.hasCredentials', 
   assert.equal(ok, true)
   assert.equal(auth.isAuthenticated, true)
   assert.equal(auth.isSecuredConnection, false)
+})
+
+test('auth: checkSession restores Transmission credentials without generic probing', async () => {
+  setActivePinia(createPinia())
+
+  const auth = useAuthStore()
+  const backend = useBackendStore()
+
+  let genericCreateCalls = 0
+  let genericRebootCalls = 0
+  let transCreateCalls = 0
+  let clearCalls = 0
+
+  const transAdapter = {
+    hasCredentials: true,
+    checkSession: async () => true,
+  }
+  const transVersion = { type: 'trans', version: '4.0.0', major: 4, minor: 0, patch: 0, isUnknown: false }
+
+  const deps = {
+    restoreTransSessionAuth: () => true,
+    hasConfiguredTransUrl: () => false,
+    clearTransSessionAuth: () => { clearCalls++ },
+    createTransAdapterWithAuth: async () => {
+      transCreateCalls++
+      return { adapter: transAdapter as any, version: transVersion as any }
+    },
+    createAdapter: async () => {
+      genericCreateCalls++
+      throw new Error('generic create should not be called')
+    },
+    rebootAdapterWithAuth: async () => {
+      genericRebootCalls++
+      throw new Error('generic reboot should not be called')
+    },
+  }
+
+  const ok = await auth.checkSession(deps)
+
+  assert.equal(ok, true)
+  assert.equal(auth.isAuthenticated, true)
+  assert.equal(backend.backendType, 'trans')
+  assert.equal(transCreateCalls, 1)
+  assert.equal(genericCreateCalls, 0)
+  assert.equal(genericRebootCalls, 0)
+  assert.equal(clearCalls, 0)
+})
+
+test('auth: checkSession returns false for explicit VITE_TR_URL without stored credentials', async () => {
+  setActivePinia(createPinia())
+
+  const auth = useAuthStore()
+
+  let genericCreateCalls = 0
+  let transCreateCalls = 0
+
+  const deps = {
+    restoreTransSessionAuth: () => false,
+    hasConfiguredTransUrl: () => true,
+    clearTransSessionAuth: () => {},
+    createTransAdapterWithAuth: async () => {
+      transCreateCalls++
+      throw new Error('trans create should not be called')
+    },
+    createAdapter: async () => {
+      genericCreateCalls++
+      throw new Error('generic create should not be called')
+    },
+    rebootAdapterWithAuth: async () => {
+      throw new Error('generic reboot should not be called')
+    },
+  }
+
+  const ok = await auth.checkSession(deps)
+
+  assert.equal(ok, false)
+  assert.equal(auth.isChecking, false)
+  assert.equal(genericCreateCalls, 0)
+  assert.equal(transCreateCalls, 0)
 })
 
 test('auth: checkSession restores session and falls back to temp adapter when rebootAdapterWithAuth fails', async () => {

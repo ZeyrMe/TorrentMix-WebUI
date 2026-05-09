@@ -1,4 +1,4 @@
-import { transClient } from '@/api/trans-client'
+import { clearTransSessionAuth, clearTransSessionId, saveTransSessionAuth, transClient } from '@/api/trans-client'
 import type { BaseAdapter, AddTorrentParams, FetchListResult, TransferSettings, BackendPreferences, BackendCapabilities, TorrentBandwidthPriority } from '../interface'
 import type { Category, Peer, ServerState, TorrentFile, TorrentState, Tracker, UnifiedTorrent, UnifiedTorrentDetail } from '../types'
 import { VIRTUAL_ROOT_EXTERNAL, VIRTUAL_ROOT_EXTERNAL_PREFIX } from '@/utils/folderTree'
@@ -1053,13 +1053,21 @@ export class TransAdapter implements BaseAdapter {
     const user = String(username ?? '').trim()
     const pass = String(password ?? '').trim()
 
+    clearTransSessionId()
+
     // 允许“开放后端”不配置凭证：不设置 Basic Auth 头，直接验证 RPC 是否可用。
     transClient.defaults.auth = (!user && !pass) ? undefined : { username: user, password: pass }
 
-    // 验证凭证有效性
-    const session = await this.rpcCall<Record<string, unknown>>('session-get')
-    this.updateSessionInfo(session)
-    this.speedBytesState = 'ready'
+    try {
+      // 验证凭证有效性
+      const session = await this.rpcCall<Record<string, unknown>>('session-get')
+      this.updateSessionInfo(session)
+      this.speedBytesState = 'ready'
+      saveTransSessionAuth(user, pass)
+    } catch (error) {
+      clearTransSessionAuth()
+      throw error
+    }
   }
 
   /**
@@ -1072,7 +1080,7 @@ export class TransAdapter implements BaseAdapter {
 
   // 登出
   async logout(): Promise<void> {
-    transClient.defaults.auth = undefined
+    clearTransSessionAuth()
   }
 
   // 静默验证 session
