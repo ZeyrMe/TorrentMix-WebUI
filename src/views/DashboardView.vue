@@ -832,11 +832,11 @@ onUnmounted(() => {
               type="button"
               aria-label="筛选全部种子"
               @click="stateFilter = 'all'"
-              :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${stateFilter === 'all' ? 'bg-black text-white' : 'text-slate-700 hover:bg-slate-100'}`"
+              :class="`flex items-center rounded-lg text-left transition-colors duration-150 ${sidebarCollapsed ? 'mx-auto h-10 w-10 justify-center px-0 py-0' : 'w-full gap-3 px-3 py-2'} ${stateFilter === 'all' ? 'bg-gray-200 text-gray-900' : 'text-gray-700 hover:bg-gray-100'}`"
             >
               <Icon name="list" :size="16" />
               <span :class="`truncate text-sm ${sidebarCollapsed ? 'hidden' : ''}`">全部</span>
-              <span v-if="stats.total > 0" :class="`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${sidebarCollapsed ? 'hidden' : ''} ${stateFilter === 'all' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-600'}`">{{ stats.total }}</span>
+              <span v-if="stats.total > 0" :class="`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${sidebarCollapsed ? 'hidden' : ''} ${stateFilter === 'all' ? 'bg-gray-300 text-gray-700' : 'bg-gray-200 text-gray-600'}`">{{ stats.total }}</span>
             </button>
 
             <template v-for="item in stateFilterItems" :key="item.key">
@@ -846,11 +846,11 @@ onUnmounted(() => {
                   type="button"
                   :aria-label="item.ariaLabel"
                   @click="stateFilter = 'paused'"
-                  :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${stateFilter === 'paused' || stateFilter.startsWith('paused-') ? 'bg-black text-white' : 'text-slate-700 hover:bg-slate-100'}`"
+                  :class="`flex items-center rounded-lg text-left transition-colors duration-150 ${sidebarCollapsed ? 'mx-auto h-10 w-10 justify-center px-0 py-0' : 'w-full gap-3 px-3 py-2'} ${stateFilter === 'paused' || stateFilter.startsWith('paused-') ? 'bg-gray-200 text-gray-900' : 'text-gray-700 hover:bg-gray-100'}`"
                 >
                   <Icon :name="item.meta.icon" :color="item.meta.color" :size="16" />
                   <span :class="`truncate text-sm ${sidebarCollapsed ? 'hidden' : ''}`">{{ item.meta.label }}</span>
-                  <span v-if="item.count > 0" :class="`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${sidebarCollapsed ? 'hidden' : ''} ${stateFilter === 'paused' || stateFilter.startsWith('paused-') ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-600'}`">{{ item.count }}</span>
+                  <span v-if="item.count > 0" :class="`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${sidebarCollapsed ? 'hidden' : ''} ${stateFilter === 'paused' || stateFilter.startsWith('paused-') ? 'bg-gray-300 text-gray-700' : 'bg-gray-200 text-gray-600'}`">{{ item.count }}</span>
                 </button>
 
                 <!-- 二级分类：固定展开 -->
@@ -858,21 +858,21 @@ onUnmounted(() => {
                   <button
                     type="button"
                     @click.stop="stateFilter = 'paused-completed'"
-                    :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${stateFilter === 'paused-completed' ? 'bg-slate-800 text-white' : 'text-slate-600 hover:bg-slate-100'}`"
+                    :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${stateFilter === 'paused-completed' ? 'bg-gray-200 text-gray-900' : 'text-gray-600 hover:bg-gray-100'}`"
                   >
                     <Icon name="check-circle" color="green" :size="14" />
                     <span class="truncate text-sm">已完成</span>
-                    <span v-if="stats.pausedCompleted > 0" :class="`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${stateFilter === 'paused-completed' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-600'}`">{{ stats.pausedCompleted }}</span>
+                    <span v-if="stats.pausedCompleted > 0" :class="`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${stateFilter === 'paused-completed' ? 'bg-gray-300 text-gray-700' : 'bg-gray-200 text-gray-600'}`">{{ stats.pausedCompleted }}</span>
                   </button>
 
                   <button
                     type="button"
                     @click.stop="stateFilter = 'paused-incomplete'"
-                    :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${stateFilter === 'paused-incomplete' ? 'bg-slate-800 text-white' : 'text-slate-600 hover:bg-slate-100'}`"
+                    :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${stateFilter === 'paused-incomplete' ? 'bg-gray-200 text-gray-900' : 'text-gray-600 hover:bg-gray-100'}`"
                   >
                     <Icon name="download-cloud" color="orange" :size="14" />
                     <span class="truncate text-sm">未完成</span>
-                    <span v-if="stats.pausedIncomplete > 0" :class="`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${stateFilter === 'paused-incomplete' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-600'}`">{{ stats.pausedIncomplete }}</span>
+                    <span v-if="stats.pausedIncomplete > 0" :class="`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${stateFilter === 'paused-incomplete' ? 'bg-gray-300 text-gray-700' : 'bg-gray-200 text-gray-600'}`">{{ stats.pausedIncomplete }}</span>
                   </button>
                 </div>
               </div>
@@ -882,11 +882,11 @@ onUnmounted(() => {
                 type="button"
                 :aria-label="item.ariaLabel"
                 @click="stateFilter = item.key"
-                :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${stateFilter === item.key ? 'bg-black text-white' : 'text-slate-700 hover:bg-slate-100'}`"
+                :class="`flex items-center rounded-lg text-left transition-colors duration-150 ${sidebarCollapsed ? 'mx-auto h-10 w-10 justify-center px-0 py-0' : 'w-full gap-3 px-3 py-2'} ${stateFilter === item.key ? 'bg-gray-200 text-gray-900' : 'text-gray-700 hover:bg-gray-100'}`"
               >
                 <Icon :name="item.meta.icon" :color="item.meta.color" :size="16" />
                 <span :class="`truncate text-sm ${sidebarCollapsed ? 'hidden' : ''}`">{{ item.meta.label }}</span>
-                <span v-if="item.count > 0" :class="`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${sidebarCollapsed ? 'hidden' : ''} ${stateFilter === item.key ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-600'}`">{{ item.count }}</span>
+                <span v-if="item.count > 0" :class="`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${sidebarCollapsed ? 'hidden' : ''} ${stateFilter === item.key ? 'bg-gray-300 text-gray-700' : 'bg-gray-200 text-gray-600'}`">{{ item.count }}</span>
               </button>
             </template>
           </div>
@@ -909,7 +909,7 @@ onUnmounted(() => {
               <button
                 type="button"
                 @click="categoryFilter = 'all'"
-                :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${categoryFilter === 'all' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`"
+                :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${categoryFilter === 'all' ? 'bg-gray-200 text-gray-900' : 'text-gray-700 hover:bg-gray-100'}`"
               >
                 <Icon name="folder" :size="14" />
                 <span class="truncate text-sm">{{ taxonomyFacet.allFilterLabel }}</span>
@@ -918,7 +918,7 @@ onUnmounted(() => {
                 v-if="backendStore.isQbit"
                 type="button"
                 @click="categoryFilter = ''"
-                :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${categoryFilter === '' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`"
+                :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${categoryFilter === '' ? 'bg-gray-200 text-gray-900' : 'text-gray-700 hover:bg-gray-100'}`"
               >
                 <Icon name="folder" :size="14" />
                 <span class="truncate text-sm">{{ taxonomyFacet.rootFilterLabel }}</span>
@@ -928,7 +928,7 @@ onUnmounted(() => {
                 :key="cat.name"
                 type="button"
                 @click="categoryFilter = cat.name"
-                :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${categoryFilter === cat.name ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`"
+                :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${categoryFilter === cat.name ? 'bg-gray-200 text-gray-900' : 'text-gray-700 hover:bg-gray-100'}`"
               >
                 <Icon name="folder" :size="14" />
                 <SafeText as="span" class="truncate text-sm" :text="cat.name" />
@@ -943,7 +943,7 @@ onUnmounted(() => {
               <button
                 type="button"
                 @click="tagFilter = 'all'"
-                :class="`px-2 py-1 rounded text-xs font-medium transition-colors ${tagFilter === 'all' ? 'bg-black text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'}`"
+                :class="`px-2 py-1 rounded text-xs font-medium transition-colors ${tagFilter === 'all' ? 'bg-gray-300 text-gray-900' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`"
               >
                 全部
               </button>
@@ -952,7 +952,7 @@ onUnmounted(() => {
                 :key="tag"
                 type="button"
                 @click="tagFilter = tag"
-                :class="`px-2 py-1 rounded text-xs font-medium transition-colors ${tagFilter === tag ? 'bg-black text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'}`"
+                :class="`px-2 py-1 rounded text-xs font-medium transition-colors ${tagFilter === tag ? 'bg-gray-300 text-gray-900' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`"
               >
                 <SafeText as="span" :text="tag" />
               </button>
