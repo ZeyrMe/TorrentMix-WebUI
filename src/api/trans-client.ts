@@ -4,16 +4,29 @@ import axios from 'axios'
  * Transmission RPC 客户端
  *
  * 特殊处理：
- * - 自动处理 409 Conflict，提取 X-Transmission-Session-Id 并重试
+ * - 自动处理 409 Conflict，提取 X-Transmission-Session-Id 并重试（单请求最多重试 2 次，防止死循环）
  * - Session ID 存在 axios instance 上（当前导出为单例）
+ * - Basic Auth 凭证仅以 AES-GCM 密文写入 sessionStorage（供刷新恢复），明文只存在于内存：
+ *   密钥优先存为 IndexedDB 中不可导出的 CryptoKey；无 IndexedDB 的环境（如 Node 测试）
+ *   降级为密钥字节与密文同存 sessionStorage（仍避免明文落盘格式）。
  */
 
 // TODO: 若未来需要同时管理多个 Transmission 实例，请将 transClient 改为工厂函数，确保 Session-Id / auth 按后端隔离。
 
 const TRANS_SESSION_AUTH_KEY = 'torrentmix:transmission:session-auth'
+const TRANS_FALLBACK_KEY_KEY = 'torrentmix:transmission:session-auth-key'
+const AUTH_DB_NAME = 'torrentmix-auth'
+const AUTH_DB_STORE = 'keys'
+const AUTH_DB_KEY_ID = 'trans-session-auth'
+const MAX_409_RETRIES = 2
 
 type StoredTransSessionAuth = {
   baseURL: string
+  iv: string
+  data: string
+}
+
+type TransAuthPayload = {
   username: string
   password: string
 }
@@ -74,8 +87,113 @@ function getSessionStorage(): Storage | null {
   }
 }
 
+function getSubtleCrypto(): SubtleCrypto | null {
+  const cryptoObj = (globalThis as any).crypto
+  return cryptoObj?.subtle ?? null
+}
+
+function getIndexedDB(): IDBFactory | null {
+  return (globalThis as any).indexedDB ?? null
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = ''
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return btoa(binary)
+}
+
+function base64ToBytes(value: string): Uint8Array<ArrayBuffer> {
+  const binary = atob(value)
+  const bytes = new Uint8Array(new ArrayBuffer(binary.length))
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return bytes
+}
+
+function openAuthDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const idb = getIndexedDB()
+    if (!idb) {
+      reject(new Error('IndexedDB unavailable'))
+      return
+    }
+
+    const request = idb.open(AUTH_DB_NAME, 1)
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains(AUTH_DB_STORE)) {
+        request.result.createObjectStore(AUTH_DB_STORE)
+      }
+    }
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error ?? new Error('IndexedDB open failed'))
+  })
+}
+
+function idbGetKey(db: IDBDatabase): Promise<CryptoKey | null> {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(AUTH_DB_STORE, 'readonly')
+    const request = tx.objectStore(AUTH_DB_STORE).get(AUTH_DB_KEY_ID)
+    request.onsuccess = () => resolve((request.result as CryptoKey | undefined) ?? null)
+    request.onerror = () => reject(request.error ?? new Error('IndexedDB read failed'))
+  })
+}
+
+function idbPutKey(db: IDBDatabase, key: CryptoKey): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(AUTH_DB_STORE, 'readwrite')
+    const request = tx.objectStore(AUTH_DB_STORE).put(key, AUTH_DB_KEY_ID)
+    request.onsuccess = () => resolve()
+    request.onerror = () => reject(request.error ?? new Error('IndexedDB write failed'))
+  })
+}
+
+/**
+ * 获取（或首次创建）用于加密凭证的 AES-GCM 密钥。
+ * 优先使用 IndexedDB 保存不可导出的 CryptoKey；降级路径把密钥字节存进 sessionStorage。
+ */
+async function getAuthCryptoKey(create: boolean): Promise<CryptoKey | null> {
+  const subtle = getSubtleCrypto()
+  if (!subtle) return null
+
+  try {
+    const db = await openAuthDb()
+    try {
+      const existing = await idbGetKey(db)
+      if (existing) return existing
+      if (!create) return null
+
+      const key = await subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
+      await idbPutKey(db, key)
+      return key
+    } finally {
+      db.close()
+    }
+  } catch {
+    // IndexedDB 不可用：密钥退化为可导出并与密文同存 sessionStorage
+    const storage = getSessionStorage()
+    if (!storage) return null
+
+    const storedKey = storage.getItem(TRANS_FALLBACK_KEY_KEY)
+    if (storedKey) {
+      try {
+        return await subtle.importKey('raw', base64ToBytes(storedKey).buffer as ArrayBuffer, 'AES-GCM', false, ['encrypt', 'decrypt'])
+      } catch {
+        storage.removeItem(TRANS_FALLBACK_KEY_KEY)
+      }
+    }
+
+    if (!create) return null
+
+    const keyBytes = new Uint8Array(32)
+    ;(globalThis as any).crypto.getRandomValues(keyBytes)
+    storage.setItem(TRANS_FALLBACK_KEY_KEY, bytesToBase64(keyBytes))
+    return subtle.importKey('raw', keyBytes.buffer as ArrayBuffer, 'AES-GCM', false, ['encrypt', 'decrypt'])
+  }
+}
+
 function removeStoredTransSessionAuth(): void {
-  getSessionStorage()?.removeItem(TRANS_SESSION_AUTH_KEY)
+  const storage = getSessionStorage()
+  storage?.removeItem(TRANS_SESSION_AUTH_KEY)
+  storage?.removeItem(TRANS_FALLBACK_KEY_KEY)
 }
 
 export function clearTransSessionId(): void {
@@ -86,43 +204,75 @@ export function clearTransSessionId(): void {
   delete headers.common?.['x-transmission-session-id']
 }
 
-export function saveTransSessionAuth(username: string, password: string): void {
+export async function saveTransSessionAuth(username: string, password: string): Promise<void> {
   if (!username && !password) {
     removeStoredTransSessionAuth()
     return
   }
 
   const storage = getSessionStorage()
-  if (!storage) return
+  const subtle = getSubtleCrypto()
+  if (!storage || !subtle) return
 
-  const payload: StoredTransSessionAuth = {
-    baseURL: getTransAuthScope(),
-    username,
-    password,
+  try {
+    const key = await getAuthCryptoKey(true)
+    if (!key) return
+
+    const iv = new Uint8Array(12)
+    ;(globalThis as any).crypto.getRandomValues(iv)
+
+    const plaintext = new TextEncoder().encode(JSON.stringify({ username, password } satisfies TransAuthPayload))
+    const ciphertext = await subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext)
+
+    const payload: StoredTransSessionAuth = {
+      baseURL: getTransAuthScope(),
+      iv: bytesToBase64(iv),
+      data: bytesToBase64(new Uint8Array(ciphertext)),
+    }
+    storage.setItem(TRANS_SESSION_AUTH_KEY, JSON.stringify(payload))
+  } catch {
+    // 加密失败时放弃持久化（保持内存态登录），绝不回退到明文存储
+    removeStoredTransSessionAuth()
   }
-  storage.setItem(TRANS_SESSION_AUTH_KEY, JSON.stringify(payload))
 }
 
-export function restoreTransSessionAuth(): boolean {
+export async function restoreTransSessionAuth(): Promise<boolean> {
   if (transClient.defaults.auth) return true
 
   const storage = getSessionStorage()
-  if (!storage) return false
+  const subtle = getSubtleCrypto()
+  if (!storage || !subtle) return false
 
   const raw = storage.getItem(TRANS_SESSION_AUTH_KEY)
   if (!raw) return false
 
   try {
     const payload = JSON.parse(raw) as Partial<StoredTransSessionAuth>
-    const username = payload.username
-    const password = payload.password
-
     if (
       payload.baseURL !== getTransAuthScope() ||
-      typeof username !== 'string' ||
-      typeof password !== 'string' ||
-      (!username && !password)
+      typeof payload.iv !== 'string' ||
+      typeof payload.data !== 'string'
     ) {
+      clearTransSessionAuth()
+      return false
+    }
+
+    const key = await getAuthCryptoKey(false)
+    if (!key) {
+      clearTransSessionAuth()
+      return false
+    }
+
+    const plaintext = await subtle.decrypt(
+      { name: 'AES-GCM', iv: base64ToBytes(payload.iv) },
+      key,
+      base64ToBytes(payload.data).buffer as ArrayBuffer,
+    )
+    const parsed = JSON.parse(new TextDecoder().decode(plaintext)) as Partial<TransAuthPayload>
+    const username = parsed.username
+    const password = parsed.password
+
+    if (typeof username !== 'string' || typeof password !== 'string' || (!username && !password)) {
       clearTransSessionAuth()
       return false
     }
@@ -147,14 +297,19 @@ transClient.interceptors.response.use(
   async error => {
     const is409 = error.response?.status === 409
     const hasSessionIdHeader = error.response?.headers?.['x-transmission-session-id']
+    const retryCount = Number(error.config?.__transRetry409 ?? 0)
 
-    if (is409 && hasSessionIdHeader) {
+    if (is409 && hasSessionIdHeader && retryCount < MAX_409_RETRIES) {
       // 提取新的 Session ID
-      transClient.defaults.headers['X-Transmission-Session-Id'] = String(
-        error.response.headers['x-transmission-session-id'],
-      )
+      const sessionId = String(error.response.headers['x-transmission-session-id'])
+      transClient.defaults.headers['X-Transmission-Session-Id'] = sessionId
 
-      // 重试原请求
+      // 重试原请求（带上限，避免后端持续 409 时无限循环）。
+      // error.config 是合并后的配置，可能携带过期 Session-Id 且优先级高于 defaults，需显式覆盖。
+      error.config.__transRetry409 = retryCount + 1
+      if (error.config.headers) {
+        error.config.headers['X-Transmission-Session-Id'] = sessionId
+      }
       return transClient.request(error.config)
     }
 

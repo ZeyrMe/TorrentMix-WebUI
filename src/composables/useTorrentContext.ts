@@ -311,7 +311,9 @@ function createDashboardListState(options: DashboardControllerOptions) {
       else compare = String(av ?? '').localeCompare(String(bv ?? ''), 'zh-CN')
     }
 
-    return ui.sortOrder === 'asc' ? compare : -compare
+    const directional = ui.sortOrder === 'asc' ? compare : -compare
+    // 稳定次级排序键：主键相等时按 id 定序，避免轮询更新导致同值行来回抖动
+    return directional !== 0 ? directional : a.id.localeCompare(b.id)
   }
 
   const filteredTorrents = computed(() => {

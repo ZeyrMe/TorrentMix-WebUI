@@ -1063,7 +1063,7 @@ export class TransAdapter implements BaseAdapter {
       const session = await this.rpcCall<Record<string, unknown>>('session-get')
       this.updateSessionInfo(session)
       this.speedBytesState = 'ready'
-      saveTransSessionAuth(user, pass)
+      await saveTransSessionAuth(user, pass)
     } catch (error) {
       clearTransSessionAuth()
       throw error

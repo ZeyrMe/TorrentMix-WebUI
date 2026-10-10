@@ -158,13 +158,13 @@ test('auth: disconnect clears persisted Transmission Basic Auth', async () => {
     clearTransSessionAuth()
 
     const auth = useAuthStore()
-    saveTransSessionAuth('admin', 'pass')
+    await saveTransSessionAuth('admin', 'pass')
 
-    assert.equal(restoreTransSessionAuth(), true)
+    assert.equal(await restoreTransSessionAuth(), true)
     auth.disconnect()
 
     transClient.defaults.auth = undefined
-    assert.equal(restoreTransSessionAuth(), false)
+    assert.equal(await restoreTransSessionAuth(), false)
   } finally {
     clearTransSessionAuth()
     transClient.defaults.auth = originalAuth

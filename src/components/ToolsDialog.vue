@@ -13,6 +13,7 @@ import type {
 } from '@/adapter/interface'
 import Icon from '@/components/Icon.vue'
 import SafeText from '@/components/SafeText.vue'
+import { useUiOverlay } from '@/composables/useUiOverlay'
 
 interface Props {
   open: boolean
@@ -27,6 +28,7 @@ const emit = defineEmits<Emits>()
 
 const backendStore = useBackendStore()
 const adapter = computed(() => backendStore.adapter)
+const overlay = useUiOverlay()
 const capabilities = computed<BackendCapabilities>(() => backendStore.capabilities)
 
 type TabId = 'logs' | 'rss' | 'search'
@@ -176,7 +178,14 @@ async function rssRemoveItem() {
   if (!adapter.value?.rssRemoveItem) return
   const path = rssItemPath.value.trim()
   if (!path) return
-  if (!confirm(`确定移除 \"${path}\" 吗？`)) return
+  const confirmed = await overlay.confirm({
+    title: '移除 RSS 订阅',
+    message: `确定移除 "${path}" 吗？`,
+    confirmLabel: '移除',
+    cancelLabel: '取消',
+    tone: 'danger',
+  })
+  if (!confirmed) return
   await run(
     () => adapter.value!.rssRemoveItem!(path),
     () => {},
@@ -257,7 +266,14 @@ async function rssRemoveRule() {
   if (!adapter.value?.rssRemoveRule) return
   const name = rssRuleName.value.trim()
   if (!name) return
-  if (!confirm(`确定删除规则 \"${name}\" 吗？`)) return
+  const confirmed = await overlay.confirm({
+    title: '删除 RSS 规则',
+    message: `确定删除规则 "${name}" 吗？`,
+    confirmLabel: '删除',
+    cancelLabel: '取消',
+    tone: 'danger',
+  })
+  if (!confirmed) return
   await run(
     () => adapter.value!.rssRemoveRule!(name),
     () => {},

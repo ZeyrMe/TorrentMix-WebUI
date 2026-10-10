@@ -6,6 +6,7 @@ import Icon from '@/components/Icon.vue'
 import SafeText from '@/components/SafeText.vue'
 import { formatBytes, formatSpeed, formatDuration } from '@/utils/format'
 import { isVirtualExternalPath, stripVirtualExternalPrefix } from '@/utils/folderTree'
+import { useUiOverlay } from '@/composables/useUiOverlay'
 
 interface Props {
   open: boolean
@@ -21,6 +22,7 @@ const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
 const backendStore = useBackendStore()
+const overlay = useUiOverlay()
 
 // 详情数据
 const detail = ref<UnifiedTorrentDetail | null>(null)
@@ -169,13 +171,33 @@ async function handleResume() {
 // 删除
 async function handleDelete() {
   if (!detail.value) return
-  const deleteFiles = confirm(
-    `是否同时删除下载文件？\n\n种子：${detail.value.name}`
-  )
+  const choice = await overlay.confirm({
+    title: '删除种子',
+    message: `是否同时删除下载文件？\n\n种子：${detail.value.name}`,
+    confirmLabel: '删除种子与文件',
+    cancelLabel: '仅删除种子',
+    tone: 'danger',
+  })
+  if (choice === null) return
+  const deleteFiles = choice
   if (deleteFiles) {
-    if (!confirm(`警告：确定删除并删除文件吗？\n\n此操作不可恢复！`)) return
+    const confirmed = await overlay.confirm({
+      title: '确认删除文件',
+      message: `警告：确定删除并删除文件吗？\n\n此操作不可恢复！`,
+      confirmLabel: '确认删除',
+      cancelLabel: '取消',
+      tone: 'danger',
+    })
+    if (!confirmed) return
   } else {
-    if (!confirm(`确定删除种子吗？\n（仅删除种子，保留文件）`)) return
+    const confirmed = await overlay.confirm({
+      title: '确认删除种子',
+      message: `确定删除种子吗？\n（仅删除种子，保留文件）`,
+      confirmLabel: '确认删除',
+      cancelLabel: '取消',
+      tone: 'danger',
+    })
+    if (!confirmed) return
   }
   await executeAction(() => backendStore.adapter!.delete([props.hash!], deleteFiles))
   emit('close')  // 删除后关闭抽屉

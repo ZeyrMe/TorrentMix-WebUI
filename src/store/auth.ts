@@ -35,7 +35,7 @@ type RequiredCheckSessionDeps = {
   createAdapter: () => Promise<{ adapter: BaseAdapter; version: BackendVersion }>
   rebootAdapterWithAuth: () => Promise<{ adapter: BaseAdapter; version: BackendVersion }>
   createTransAdapterWithAuth: () => Promise<{ adapter: BaseAdapter; version: BackendVersion }>
-  restoreTransSessionAuth: () => boolean
+  restoreTransSessionAuth: () => boolean | Promise<boolean>
   hasConfiguredTransUrl: () => boolean
   clearTransSessionAuth: () => void
 }
@@ -156,7 +156,7 @@ export const useAuthStore = defineStore('auth', () => {
       const d = { ...DEFAULT_CHECK_SESSION_DEPS, ...(deps ?? {}) }
       isChecking.value = true
       try {
-        if (d.restoreTransSessionAuth()) {
+        if (await d.restoreTransSessionAuth()) {
           try {
             const { adapter: transAdapter, version: transVersion } = await d.createTransAdapterWithAuth()
             const valid = await transAdapter.checkSession()

@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import type { UnifiedTorrent } from '@/adapter/types'
 import type { ColumnState } from '@/composables/useTableColumns/types'
-import { formatBytes, formatSpeed } from '@/utils/format'
+import { formatBytes, formatSpeed, formatEta } from '@/utils/format'
 import { getSwarmTexts, getSwarmTitle } from '@/utils/swarm'
 import Icon from '@/components/Icon.vue'
 import SafeText from '@/components/SafeText.vue'
@@ -101,26 +101,7 @@ const getStateIcon = (state: TorrentState): { name: string; color: 'blue' | 'cya
   return icons[state]
 }
 
-// 格式化ETA
-const formatETA = (eta: number, progress: number, state: TorrentState): string => {
-  // 已完成或错误状态显示无限
-  if (progress >= 1.0 || state === 'error') return '∞'
-
-  // 无限时间判断：-1、负数、非数值、或超过1年
-  if (eta === -1 || eta <= 0 || !isFinite(eta) || eta >= 86400 * 365) return '∞'
-
-  const seconds = Math.floor(eta)
-  if (seconds < 60) return `${seconds}秒`
-
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}分`
-
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}小时`
-
-  const days = Math.floor(hours / 24)
-  return `${days}天`
-}
+const swarmTexts = computed(() => getSwarmTexts(props.torrent))
 
 const categoryMetaText = computed(() => {
   const raw = props.torrent.category ?? ''
@@ -188,7 +169,7 @@ const categoryMetaTitle = computed(() => `分类 ${categoryMetaText.value}`)
             </span>
             <span class="hidden sm:inline">比率 {{ torrent.ratio.toFixed(2) }}</span>
             <span class="hidden md:inline" :title="getSwarmTitle(torrent)">
-              做种 {{ getSwarmTexts(torrent).seeds }} 下载 {{ getSwarmTexts(torrent).peers }}
+              做种 {{ swarmTexts.seeds }} 下载 {{ swarmTexts.peers }}
             </span>
           </div>
         </div>
@@ -255,7 +236,7 @@ const categoryMetaTitle = computed(() => `分类 ${categoryMetaText.value}`)
       v-show="columnById['eta']?.visible ?? true"
     >
       <div class="text-sm font-mono font-tabular text-gray-600">
-        {{ formatETA(torrent.eta, torrent.progress, torrent.state) }}
+        {{ formatEta(torrent.eta, torrent.progress, torrent.state) }}
       </div>
     </div>
 

@@ -3,9 +3,11 @@ import { ref, onMounted } from 'vue'
 import { useBackendStore } from '@/store/backend'
 import Icon from '@/components/Icon.vue'
 import SafeText from '@/components/SafeText.vue'
+import { useUiOverlay } from '@/composables/useUiOverlay'
 
 const backendStore = useBackendStore()
 const adapter = backendStore.adapter!
+const overlay = useUiOverlay()
 
 const emit = defineEmits<{
   close: []
@@ -55,7 +57,14 @@ async function handleDelete(tag: string) {
   const message = backendStore.isTrans
     ? `确定要从所有种子移除标签 "${tag}" 吗？`
     : `确定要删除标签 "${tag}" 吗？`
-  if (!confirm(message)) return
+  const confirmed = await overlay.confirm({
+    title: '删除标签',
+    message,
+    confirmLabel: '删除',
+    cancelLabel: '取消',
+    tone: 'danger',
+  })
+  if (!confirmed) return
 
   try {
     await adapter.deleteTags(tag)

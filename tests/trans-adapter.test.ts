@@ -115,7 +115,7 @@ test('Transmission: login should persist Basic Auth in sessionStorage for refres
     transClient.defaults.auth = undefined
     clearTransSessionId()
 
-    assert.equal(restoreTransSessionAuth(), true)
+    assert.equal(await restoreTransSessionAuth(), true)
     assert.deepEqual(transClient.defaults.auth, { username: 'admin', password: 'pass' })
   } finally {
     mock.restoreAll()
@@ -139,7 +139,7 @@ test('Transmission: failed login should clear temporary Basic Auth and stored cr
 
     await assert.rejects(() => adapter.login('admin', 'bad-pass'), /Unauthorized/)
     assert.equal(transClient.defaults.auth, undefined)
-    assert.equal(restoreTransSessionAuth(), false)
+    assert.equal(await restoreTransSessionAuth(), false)
   } finally {
     mock.restoreAll()
     clearTransSessionAuth()
@@ -169,7 +169,7 @@ test('Transmission: logout should clear persisted Basic Auth and cached session 
 
     assert.equal(transClient.defaults.auth, undefined)
     assert.equal((transClient.defaults.headers as any)['X-Transmission-Session-Id'], undefined)
-    assert.equal(restoreTransSessionAuth(), false)
+    assert.equal(await restoreTransSessionAuth(), false)
   } finally {
     mock.restoreAll()
     clearTransSessionAuth()

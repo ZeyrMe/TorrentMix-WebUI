@@ -16,6 +16,30 @@ export function formatSpeed(bytesPerSecond: number): string {
   return formatted === '--' ? '--' : `${formatted}/s`
 }
 
+/**
+ * 格式化种子剩余时间（中文单位，供列表行/卡片共用）
+ * 已完成、错误状态或无限时间显示 ∞
+ */
+export function formatEta(eta: number, progress: number, state: string): string {
+  // 已完成或错误状态显示无限
+  if (progress >= 1.0 || state === 'error') return '∞'
+
+  // 无限时间判断：-1、负数、非数值、或超过1年
+  if (eta === -1 || eta <= 0 || !isFinite(eta) || eta >= 86400 * 365) return '∞'
+
+  const seconds = Math.floor(eta)
+  if (seconds < 60) return `${seconds}秒`
+
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}分`
+
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}小时`
+
+  const days = Math.floor(hours / 24)
+  return `${days}天`
+}
+
 export function formatDuration(seconds: number): string {
   if (!Number.isFinite(seconds)) return '--'
   // qBittorrent 用 -1 或 >= 8640000 (100天) 表示无限

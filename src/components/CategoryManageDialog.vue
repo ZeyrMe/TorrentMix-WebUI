@@ -4,9 +4,11 @@ import { useBackendStore } from '@/store/backend'
 import type { Category } from '@/adapter/types'
 import Icon from '@/components/Icon.vue'
 import SafeText from '@/components/SafeText.vue'
+import { useUiOverlay } from '@/composables/useUiOverlay'
 
 const backendStore = useBackendStore()
 const adapter = computed(() => backendStore.adapter!)
+const overlay = useUiOverlay()
 
 const emit = defineEmits<{
   close: []
@@ -88,7 +90,14 @@ function cancelEdit() {
 
 // 删除分类
 async function handleDelete(name: string) {
-  if (!confirm(`确定要删除分类 "${name}" 吗？`)) return
+  const confirmed = await overlay.confirm({
+    title: '删除分类',
+    message: `确定要删除分类 "${name}" 吗？`,
+    confirmLabel: '删除',
+    cancelLabel: '取消',
+    tone: 'danger',
+  })
+  if (!confirmed) return
 
   try {
     await adapter.value.deleteCategories(name)

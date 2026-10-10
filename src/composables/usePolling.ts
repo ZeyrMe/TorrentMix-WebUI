@@ -85,6 +85,8 @@ export function usePolling(options: PollingOptions): PollingController {
   let timer: ReturnType<typeof setTimeout> | null = null
   let circuitBreakerTimer: ReturnType<typeof setTimeout> | null = null
   let isPaused = false
+  // 单飞守卫：防止可见性恢复的立即 tick 与在途 tick 并发出两条轮询链
+  let isTicking = false
 
   /**
    * 失败时指数退避
@@ -128,7 +130,7 @@ export function usePolling(options: PollingOptions): PollingController {
    * 执行单次轮询
    */
   async function tick() {
-    if (isPaused || !isPolling.value) return
+    if (isPaused || !isPolling.value || isTicking) return
 
     // 主动跳过：例如正在进行写操作，避免轮询与操作互相“打架”导致 UI 闪回
     if (shouldSkip && shouldSkip()) {
@@ -138,6 +140,7 @@ export function usePolling(options: PollingOptions): PollingController {
       return
     }
 
+    isTicking = true
     try {
       await fn()
       reset()
@@ -149,6 +152,8 @@ export function usePolling(options: PollingOptions): PollingController {
         return
       }
       backoff()
+    } finally {
+      isTicking = false
     }
 
     // 调度下一次轮询
@@ -193,8 +198,12 @@ export function usePolling(options: PollingOptions): PollingController {
         isPaused = true
       } else {
         isPaused = false
-        // 页面恢复时立即执行一次
+        // 页面恢复时立即执行一次；先清掉隐藏期间遗留的 pending timer，避免双轮询链
         if (isPolling.value) {
+          if (timer) {
+            clearTimeout(timer)
+            timer = null
+          }
           void tick()
         }
       }

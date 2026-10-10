@@ -55,6 +55,18 @@ function unknownTransmissionVersion(rpcSemver?: string): BackendVersion {
   }
 }
 
+// 保守策略：探测失败时按 qBittorrent v4 处理
+function unknownQbitVersion(): BackendVersion {
+  return {
+    type: 'qbit',
+    version: 'unknown',
+    major: 4,
+    minor: 0,
+    patch: 0,
+    isUnknown: true,
+  }
+}
+
 function parseTransmissionVersionArgs(args: Record<string, any> | undefined): BackendVersion {
   const version = args?.version || 'unknown'
   const rpcSemver = args?.['rpc-version-semver'] || args?.rpcVersionSemver
@@ -127,6 +139,41 @@ async function probeTransmissionWithRetry(
   } catch {}
 
   return { version: 'unknown', major: 0, minor: 0, patch: 0, rpcSemver, isUnknown: true }
+}
+
+type QbitProbeClient = Pick<ReturnType<typeof axios.create>, 'get'>
+
+/**
+ * qBittorrent 探测：version → webapiVersion → features。
+ * 200/403 均视为命中（403 = 端点存在但未认证，版本标记为 unknown）；
+ * 其余状态返回 null，由调用方决定回退策略。
+ */
+async function probeQbitVersion(client: QbitProbeClient): Promise<BackendVersion | null> {
+  const res = await client.get('/api/v2/app/version', { validateStatus: () => true })
+  if (res.status !== 200 && res.status !== 403) return null
+
+  const version = res.status === 200 ? String(res.data).trim() : 'unknown'
+  const parsed = parseVersion(version)
+
+  // 获取 API 版本（只有成功时才获取）
+  let apiVersion: string | undefined
+  if (res.status === 200) {
+    try {
+      const apiRes = await client.get('/api/v2/app/webapiVersion')
+      apiVersion = String(apiRes.data).trim()
+    } catch {}
+  }
+
+  const isUnknown = res.status === 403 || version === 'unknown'
+
+  return {
+    type: 'qbit',
+    version,
+    ...parsed,
+    apiVersion,
+    features: isUnknown ? undefined : detectQbitFeatures(version, apiVersion),
+    isUnknown,
+  }
 }
 
 function getEnv(): Record<string, any> {
@@ -255,40 +302,11 @@ export async function detectBackendWithVersionAuth(_timeout = 3000): Promise<Bac
   // 强制 qBittorrent：只尝试 qB
   if (forced === 'qbit') {
     try {
-      const res = await silentApiClient.get('/api/v2/app/version', { validateStatus: () => true })
-      if (res.status === 200 || res.status === 403) {
-        const version = res.status === 200 ? String(res.data).trim() : 'unknown'
-        const parsed = parseVersion(version)
-
-        let apiVersion: string | undefined
-        if (res.status === 200) {
-          try {
-            const apiRes = await silentApiClient.get('/api/v2/app/webapiVersion')
-            apiVersion = String(apiRes.data).trim()
-          } catch {}
-        }
-
-        const isUnknown = res.status === 403 || version === 'unknown'
-
-        return {
-          type: 'qbit',
-          version,
-          ...parsed,
-          apiVersion,
-          features: isUnknown ? undefined : detectQbitFeatures(version, apiVersion),
-          isUnknown
-        }
-      }
+      const probed = await probeQbitVersion(silentApiClient)
+      if (probed) return probed
     } catch {}
 
-    return {
-      type: 'qbit',
-      version: 'unknown',
-      major: 4,
-      minor: 0,
-      patch: 0,
-      isUnknown: true
-    }
+    return unknownQbitVersion()
   }
 
   // 强制或显式配置 Transmission：只尝试带凭据的 TR 探测。
@@ -298,32 +316,8 @@ export async function detectBackendWithVersionAuth(_timeout = 3000): Promise<Bac
 
   // 自动探测：优先尝试 qBittorrent
   try {
-    const res = await silentApiClient.get('/api/v2/app/version', { validateStatus: () => true })
-    if (res.status === 200 || res.status === 403) {
-      const version = res.status === 200 ? String(res.data).trim() : 'unknown'
-      const parsed = parseVersion(version)
-
-      // 获取 API 版本（只有成功时才获取）
-      let apiVersion: string | undefined
-      if (res.status === 200) {
-        try {
-          const apiRes = await silentApiClient.get('/api/v2/app/webapiVersion')
-          apiVersion = String(apiRes.data).trim()
-        } catch {}
-      }
-
-      // 标记是否为未知版本
-      const isUnknown = res.status === 403 || version === 'unknown'
-
-      return {
-        type: 'qbit',
-        version,
-        ...parsed,
-        apiVersion,
-        features: isUnknown ? undefined : detectQbitFeatures(version, apiVersion),
-        isUnknown
-      }
-    }
+    const probed = await probeQbitVersion(silentApiClient)
+    if (probed) return probed
   } catch {}
 
   // 尝试 Transmission
@@ -331,15 +325,7 @@ export async function detectBackendWithVersionAuth(_timeout = 3000): Promise<Bac
     return await detectTransmissionWithVersionAuth()
   } catch {}
 
-  // 保守策略：检测失败返回 qBittorrent v4
-  return {
-    type: 'qbit',
-    version: 'unknown',
-    major: 4,
-    minor: 0,
-    patch: 0,
-    isUnknown: true
-  }
+  return unknownQbitVersion()
 }
 
 /**
@@ -357,106 +343,31 @@ export async function detectBackendWithVersion(timeout = 3000): Promise<BackendV
   const qbitBaseURL = useRelativePath ? '' : getQbitBaseUrl()
 
   const qbitDetector = axios.create({ baseURL: qbitBaseURL, timeout, withCredentials: false })
-  const transDetector = axios.create({ timeout, withCredentials: false })
-  const transRpcUrl = getTransmissionRpcUrl()
 
   // 强制 qBittorrent：只尝试 qB
   if (forced === 'qbit') {
     try {
-      const res = await qbitDetector.get('/api/v2/app/version', { validateStatus: () => true })
-      if (res.status === 200 || res.status === 403) {
-        const version = res.status === 200 ? String(res.data).trim() : 'unknown'
-        const parsed = parseVersion(version)
-
-        let apiVersion: string | undefined
-        if (res.status === 200) {
-          try {
-            const apiRes = await qbitDetector.get('/api/v2/app/webapiVersion')
-            apiVersion = String(apiRes.data).trim()
-          } catch {}
-        }
-
-        const isUnknown = res.status === 403 || version === 'unknown'
-
-        return {
-          type: 'qbit',
-          version,
-          ...parsed,
-          apiVersion,
-          features: isUnknown ? undefined : detectQbitFeatures(version, apiVersion),
-          isUnknown
-        }
-      }
+      const probed = await probeQbitVersion(qbitDetector)
+      if (probed) return probed
     } catch {}
 
-    return {
-      type: 'qbit',
-      version: 'unknown',
-      major: 4,
-      minor: 0,
-      patch: 0,
-      isUnknown: true
-    }
+    return unknownQbitVersion()
   }
 
   // 自动探测：尝试 qBittorrent
   try {
-    const res = await qbitDetector.get('/api/v2/app/version', { validateStatus: () => true })
-    if (res.status === 200 || res.status === 403) {
-      const version = res.status === 200 ? String(res.data).trim() : 'unknown'
-      const parsed = parseVersion(version)
-
-      // 获取 API 版本（只有成功时才获取）
-      let apiVersion: string | undefined
-      if (res.status === 200) {
-        try {
-          const apiRes = await qbitDetector.get('/api/v2/app/webapiVersion')
-          apiVersion = String(apiRes.data).trim()
-        } catch {}
-      }
-
-      // 标记是否为未知版本（用于判断是否应该缓存）
-      const isUnknown = res.status === 403 || version === 'unknown'
-
-      return {
-        type: 'qbit',
-        version,
-        ...parsed,
-        apiVersion,
-        features: isUnknown ? undefined : detectQbitFeatures(version, apiVersion),
-        isUnknown  // 添加标记，未认证时为 true
-      }
-    }
+    const probed = await probeQbitVersion(qbitDetector)
+    if (probed) return probed
   } catch {}
 
   // 尝试 Transmission
   try {
-    const res = await probeTransmissionWithRetry(transDetector, transRpcUrl)
+    const transDetector = axios.create({ timeout, withCredentials: false })
+    const res = await probeTransmissionWithRetry(transDetector, getTransmissionRpcUrl())
     if (res) return { type: 'trans', ...res }
   } catch {}
 
-  // 保守策略：检测失败返回 qBittorrent v4
-  return {
-    type: 'qbit',
-    version: 'unknown',
-    major: 4,
-    minor: 0,
-    patch: 0,
-    isUnknown: true  // 明确标记为未知
-  }
-}
-
-/**
- * 解析 WebAPI 版本 "2.11.3" → { major: 2, minor: 11, patch: 3 }
- */
-function parseApiVersion(version: string): { major: number; minor: number; patch: number } | null {
-  const match = version.match(/(\d+)\.(\d+)\.(\d+)/)
-  if (!match || !match[1] || !match[2] || !match[3]) return null
-  return {
-    major: parseInt(match[1], 10),
-    minor: parseInt(match[2], 10),
-    patch: parseInt(match[3], 10)
-  }
+  return unknownQbitVersion()
 }
 
 /**
@@ -481,7 +392,7 @@ function detectQbitFeatures(
   apiVersion?: string
 ): QbitFeatures {
   const parsed = parseVersion(appVersion)
-  const apiVer = apiVersion ? parseApiVersion(apiVersion) : null
+  const apiVer = apiVersion ? parseVersionParts(apiVersion) : null
 
   // 如果没有 API 版本，使用保守估计（基于应用版本）
   if (!apiVer) {
@@ -510,16 +421,21 @@ function detectQbitFeatures(
 }
 
 /**
- * 解析版本字符串
+ * 解析 "x.y.z" 版本字符串；无法解析时返回 null
+ */
+function parseVersionParts(version: string): { major: number; minor: number; patch: number } | null {
+  const match = version.match(/(\d+)\.(\d+)\.(\d+)/)
+  if (!match || !match[1] || !match[2] || !match[3]) return null
+  return {
+    major: parseInt(match[1], 10),
+    minor: parseInt(match[2], 10),
+    patch: parseInt(match[3], 10)
+  }
+}
+
+/**
+ * 解析版本字符串（无法解析时回退到 4.0.0）
  */
 function parseVersion(version: string): { major: number; minor: number; patch: number } {
-  const match = version.match(/(\d+)\.(\d+)\.(\d+)/)
-  if (match && match[1] && match[2] && match[3]) {
-    return {
-      major: parseInt(match[1], 10),
-      minor: parseInt(match[2], 10),
-      patch: parseInt(match[3], 10)
-    }
-  }
-  return { major: 4, minor: 0, patch: 0 }
+  return parseVersionParts(version) ?? { major: 4, minor: 0, patch: 0 }
 }
