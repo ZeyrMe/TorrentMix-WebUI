@@ -417,18 +417,18 @@ const overflowGroups = computed(() => {
       </button>
       <div
         v-if="isOverflowOpen"
-        class="absolute right-0 top-full mt-2 bg-white border border-gray-200 shadow-lg rounded-xl z-50 min-w-[12rem] overflow-hidden"
+        class="absolute right-0 top-full mt-2 bg-white border border-slate-200 shadow-lg rounded-lg z-50 min-w-[12rem] overflow-hidden"
       >
         <div class="py-1">
           <template v-for="group in overflowGroups" :key="group.key">
-            <div v-if="group.label" class="px-3 pt-2 pb-1 text-[11px] font-medium text-gray-500">
+            <div v-if="group.label" class="px-3 pt-2 pb-1 text-[11px] font-medium text-slate-500">
               {{ group.label }}
             </div>
             <button
               type="button"
               v-for="item in group.items"
               :key="item.id"
-              class="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              class="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
               :disabled="item.disabled"
               @click="emit('action', item.id); closeOverflow()"
             >
@@ -436,7 +436,7 @@ const overflowGroups = computed(() => {
               <span class="flex-1 text-left">{{ item.title }}</span>
               <span
                 v-if="item.badge !== undefined && item.badge !== null && String(item.badge) !== ''"
-                class="text-[11px] text-gray-500"
+                class="text-[11px] text-slate-500"
               >
                 {{ item.badge }}
               </span>

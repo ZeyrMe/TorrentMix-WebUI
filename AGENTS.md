@@ -2,16 +2,16 @@
 
 ## Project Structure & Module Organization
 
-This WebUI targets Vue 3, TypeScript, and Vite. The planned layout follows `Claude.md`: `src/adapter` (backend adapters), `src/api` (Axios/network layer), `src/store` (Pinia state), `src/components` (UI), `src/views` (pages), `src/utils` (helpers), and `src/assets` (static files). Keep adapter, network, state, and view responsibilities separated.
+This WebUI targets Vue 3, TypeScript, and Vite. The layout follows `Claude.md`: `src/adapter` (backend adapters), `src/api` (Axios/network layer), `src/store` (Pinia state), `src/components` (UI), `src/views` (pages), `src/utils` (helpers), and `src/assets` (static files). Keep adapter, network, state, and view responsibilities separated.
 
 ## Build, Test, and Development Commands
 
-After the Vite app is scaffolded, use standard scripts:
+Use standard scripts:
 
 - `pnpm install` - install dependencies.
 - `pnpm dev` - start the local dev server.
 - `pnpm build` - produce static assets for deployment (see `Claude.md` deployment notes).
-- `pnpm test` - run the test suite once configured.
+- `pnpm test` - run the test suite (Node.js 22.6+, built-in `node --test` runner).
 
 Align any new scripts with this pattern.
 
@@ -21,7 +21,7 @@ Use TypeScript with `<script setup>` in Vue SFCs. Prefer 2-space indentation, si
 
 ## Testing Guidelines
 
-Place tests alongside source files or under `tests/` using `*.spec.ts` naming. Focus coverage on adapters, network guards, and stores; validate behavior with realistic torrent data. Aim for roughly 80 percent line and branch coverage over time.
+Place tests under `tests/` using `*.test.ts` naming (Node built-in test runner). Focus coverage on adapters, network guards, and stores; validate behavior with realistic torrent data. Aim for roughly 80 percent line and branch coverage over time.
 
 ## Commit & Pull Request Guidelines
 

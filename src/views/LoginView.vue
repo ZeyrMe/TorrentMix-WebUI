@@ -55,15 +55,15 @@ function getBackendName(): string {
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+  <div class="min-h-screen flex items-center justify-center bg-slate-50 px-4">
     <div class="w-full max-w-sm">
       <!-- Logo 区域 -->
       <div class="text-center mb-8">
         <div class="inline-flex items-center justify-center w-12 h-12 bg-black rounded-xl mb-4">
           <Icon name="download-cloud" :size="24" class="text-white" />
         </div>
-        <h1 class="text-2xl font-semibold text-gray-900 mb-2">{{ isTransmission ? '连接' : '登录' }}</h1>
-        <p class="text-gray-500 text-sm">
+        <h1 class="text-2xl font-semibold text-slate-900 mb-2">{{ isTransmission ? '连接' : '登录' }}</h1>
+        <p class="text-slate-500 text-sm">
           <span v-if="detecting">正在检测后端…</span>
           <span v-else>访问 {{ getBackendName() }}</span>
         </p>
@@ -74,7 +74,7 @@ function getBackendName(): string {
         <form @submit.prevent="handleSubmit" class="space-y-4">
           <!-- 用户名 -->
           <div class="space-y-2">
-            <label for="login-username" class="block text-sm font-medium text-gray-700">
+            <label for="login-username" class="block text-sm font-medium text-slate-700">
               {{ isTransmission ? '用户名（可选）' : '用户名' }}
             </label>
             <input
@@ -93,7 +93,7 @@ function getBackendName(): string {
 
           <!-- 密码 -->
           <div class="space-y-2">
-            <label for="login-password" class="block text-sm font-medium text-gray-700">
+            <label for="login-password" class="block text-sm font-medium text-slate-700">
               {{ isTransmission ? '密码（可选）' : '密码' }}
             </label>
             <input
@@ -139,7 +139,7 @@ function getBackendName(): string {
 
       <!-- 底部信息 -->
       <div class="text-center mt-8">
-        <p class="text-xs text-gray-400">
+        <p class="text-xs text-slate-400">
           <span v-if="detecting">正在检测后端类型…</span>
           <span v-else>{{ getBackendName() }} WebUI</span>
         </p>

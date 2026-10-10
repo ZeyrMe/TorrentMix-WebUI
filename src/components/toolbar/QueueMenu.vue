@@ -88,9 +88,9 @@ onClickOutside(rootRef, () => {
     <!-- 下拉菜单 -->
     <div
       v-if="isOpen"
-      class="absolute right-0 top-full mt-1 bg-white border border-gray-200 shadow-lg rounded-lg py-1 z-50 min-w-[200px]"
+      class="absolute right-0 top-full mt-1 bg-white border border-slate-200 shadow-lg rounded-lg py-1 z-50 min-w-[200px]"
     >
-      <div class="px-3 py-2 text-xs font-medium text-gray-500 border-b border-gray-100">
+      <div class="px-3 py-2 text-xs font-medium text-slate-500 border-b border-slate-100">
         队列管理
       </div>
 
@@ -99,14 +99,14 @@ onClickOutside(rootRef, () => {
         v-for="item in menuItems"
         :key="item.action"
         @click="handleAction(item.action)"
-        class="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors duration-150"
+        class="w-full flex items-center gap-3 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors duration-150"
         :disabled="disabled"
         :class="{ 'opacity-50 cursor-not-allowed': disabled }"
       >
-        <Icon :name="item.icon" :size="16" class="shrink-0 text-gray-500" />
+        <Icon :name="item.icon" :size="16" class="shrink-0 text-slate-500" />
         <span class="flex-1 text-left">
           <span class="font-medium block">{{ item.label }}</span>
-          <span class="text-xs text-gray-500 block">{{ item.description }}</span>
+          <span class="text-xs text-slate-500 block">{{ item.description }}</span>
         </span>
       </button>
     </div>

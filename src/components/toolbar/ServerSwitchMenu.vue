@@ -134,16 +134,16 @@ onMounted(() => {
 
     <div
       v-if="isOpen"
-      class="absolute right-0 top-full mt-1 bg-white border border-gray-200 shadow-lg rounded-lg py-1 z-50 min-w-[260px] max-w-[min(92vw,22rem)]"
+      class="absolute right-0 top-full mt-1 bg-white border border-slate-200 shadow-lg rounded-lg py-1 z-50 min-w-[260px] max-w-[min(92vw,22rem)]"
     >
-      <div class="px-3 py-2 text-xs font-medium text-gray-500 border-b border-gray-100 flex items-center justify-between gap-2">
+      <div class="px-3 py-2 text-xs font-medium text-slate-500 border-b border-slate-100 flex items-center justify-between gap-2">
         <span class="truncate">切换服务器</span>
         <button type="button" class="icon-btn" title="刷新延迟" aria-label="刷新服务器延迟" :disabled="loading" @click.stop="fetchStatus()">
           <Icon name="refresh-cw" :size="14" :class="{ 'animate-spin': loading }" />
         </button>
       </div>
 
-      <div v-if="loading" class="px-3 py-2 text-xs text-gray-500">
+      <div v-if="loading" class="px-3 py-2 text-xs text-slate-500">
         加载中…
       </div>
 
@@ -152,33 +152,33 @@ onMounted(() => {
           type="button"
           v-for="s in status?.servers ?? []"
           :key="s.id"
-          class="w-full text-left px-3 py-2 hover:bg-gray-50 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+          class="w-full text-left px-3 py-2 hover:bg-slate-50 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
           :disabled="switching"
           @click="handleSwitch(s.id)"
         >
           <div class="flex items-center gap-2 min-w-0">
             <span class="text-sm font-medium truncate">{{ s.name }}</span>
-            <span class="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 shrink-0">{{ typeLabel(s.type) }}</span>
-            <span class="text-xs text-gray-500 shrink-0 ml-auto">{{ latencyLabel(s) }}</span>
+            <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 shrink-0">{{ typeLabel(s.type) }}</span>
+            <span class="text-xs text-slate-500 shrink-0 ml-auto">{{ latencyLabel(s) }}</span>
             <Icon v-if="s.id === status?.selectedId" name="check-circle" :size="14" class="text-green-600 shrink-0" />
           </div>
-          <div class="text-[11px] text-gray-400 mt-0.5 truncate">
+          <div class="text-[11px] text-slate-400 mt-0.5 truncate">
             {{ s.baseUrl }}
           </div>
         </button>
 
-        <div v-if="errorText" class="px-3 py-2 text-xs text-red-600 whitespace-pre-wrap border-t border-gray-100">
+        <div v-if="errorText" class="px-3 py-2 text-xs text-red-600 whitespace-pre-wrap border-t border-slate-100">
           {{ errorText }}
         </div>
 
-        <div class="px-3 py-2 border-t border-gray-100">
+        <div class="px-3 py-2 border-t border-slate-100">
           <button type="button" class="btn w-full" :disabled="switching" @click.stop="openConfig">
             <Icon name="settings" :size="16" class="mr-2" />
             管理服务器
           </button>
         </div>
 
-        <div class="px-3 py-2 text-[11px] text-gray-400 border-t border-gray-100">
+        <div class="px-3 py-2 text-[11px] text-slate-400 border-t border-slate-100">
           仅 Standalone Service 模式可用
         </div>
       </template>

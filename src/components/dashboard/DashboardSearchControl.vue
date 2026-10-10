@@ -73,7 +73,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div v-if="inline" class="relative w-[clamp(9rem,14vw,14rem)] min-w-0">
-    <Icon name="search" :size="16" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+    <Icon name="search" :size="16" class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
     <input
       :value="modelValue"
       ref="inputRef"
@@ -102,12 +102,12 @@ onBeforeUnmount(() => {
 
     <div
       v-if="popoverOpen"
-      class="absolute right-0 top-full mt-2 z-50 w-[min(92vw,22rem)] rounded-xl border border-gray-200 bg-white shadow-lg"
+      class="absolute right-0 top-full mt-2 z-50 w-[min(92vw,22rem)] rounded-xl border border-slate-200 bg-white shadow-lg"
     >
       <div class="p-2">
         <div class="flex items-center gap-2">
           <div class="relative flex-1 min-w-0">
-            <Icon name="search" :size="16" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <Icon name="search" :size="16" class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               ref="inputRef"
               :value="modelValue"
@@ -134,7 +134,7 @@ onBeforeUnmount(() => {
           </button>
         </div>
 
-        <div class="mt-2 px-1 text-[11px] text-gray-400">
+        <div class="mt-2 px-1 text-[11px] text-slate-400">
           Esc 关闭，点击空白处收起
         </div>
       </div>

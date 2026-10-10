@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import type { UnifiedTorrent } from '@/adapter/types'
 import { formatBytes, formatSpeed, formatEta } from '@/utils/format'
 import { getSwarmTexts, getSwarmTitle } from '@/utils/swarm'
+import { getStateMeta } from '@/utils/torrentState'
 import Icon from '@/components/Icon.vue'
 import SafeText from '@/components/SafeText.vue'
 
@@ -38,61 +39,8 @@ function handleCheckboxClick(e: Event) {
   }))
 }
 
-type TorrentState = UnifiedTorrent['state']
-
-// 状态颜色
-const getStateColor = (state: TorrentState) => {
-  const colors: Record<TorrentState, 'blue' | 'cyan' | 'gray' | 'orange' | 'purple' | 'red'> = {
-    downloading: 'blue',
-    seeding: 'cyan',
-    paused: 'gray',
-    queued: 'orange',
-    checking: 'purple',
-    error: 'red'
-  }
-  return colors[state]
-}
-
-// 状态背景色
-const getStateBg = (state: TorrentState) => {
-  const colors: Record<TorrentState, string> = {
-    downloading: 'bg-blue-50',
-    seeding: 'bg-cyan-50',
-    paused: 'bg-gray-100',
-    queued: 'bg-orange-50',
-    checking: 'bg-purple-50',
-    error: 'bg-red-50'
-  }
-  return colors[state]
-}
-
-// 状态图标（与 TorrentRow 一致的直接映射）
-const getStateIcon = (state: TorrentState): string => {
-  const icons: Record<TorrentState, string> = {
-    downloading: 'download',
-    seeding: 'upload-cloud',
-    paused: 'pause-circle',
-    queued: 'clock',
-    checking: 'refresh-cw',
-    error: 'alert-circle'
-  }
-  return icons[state]
-}
-
 const swarmTexts = computed(() => getSwarmTexts(props.torrent))
-
-// 状态文字
-const getStateText = (state: TorrentState) => {
-  const texts: Record<TorrentState, string> = {
-    downloading: '下载中',
-    seeding: '做种中',
-    paused: '已暂停',
-    queued: '队列中',
-    checking: '检查中',
-    error: '错误'
-  }
-  return texts[state]
-}
+const stateMeta = computed(() => getStateMeta(props.torrent.state))
 </script>
 
 <template>
@@ -113,7 +61,7 @@ const getStateText = (state: TorrentState) => {
           type="checkbox"
           :checked="selected"
           :aria-label="`选择种子 ${torrent.name}`"
-          class="w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500/20 focus:ring-offset-0 focus:ring-2 cursor-pointer"
+          class="w-4 h-4 rounded border-slate-300 text-blue-500 focus:ring-blue-500/20 focus:ring-offset-0 focus:ring-2 cursor-pointer"
         />
       </div>
 
@@ -121,7 +69,7 @@ const getStateText = (state: TorrentState) => {
       <div class="flex-1 min-w-0">
         <SafeText
           as="h3"
-          class="font-medium text-gray-900 text-sm leading-5 mb-2 line-clamp-2"
+          class="font-medium text-slate-900 text-sm leading-5 mb-2 line-clamp-2"
           :text="torrent.name"
         />
 
@@ -129,15 +77,15 @@ const getStateText = (state: TorrentState) => {
         <div class="flex items-center gap-2">
           <span
             class="status-badge px-2 py-1"
-            :class="[getStateBg(torrent.state)]"
+            :class="[stateMeta.bgClass]"
           >
-            <Icon :name="getStateIcon(torrent.state)" :color="getStateColor(torrent.state)" :size="12" />
-            <span class="ml-1" :class="`text-${getStateColor(torrent.state)}-500`">{{ getStateText(torrent.state) }}</span>
+            <Icon :name="stateMeta.icon" :color="stateMeta.color" :size="12" />
+            <span class="ml-1" :class="stateMeta.textClass">{{ stateMeta.label }}</span>
           </span>
-          <span class="text-xs text-gray-500 font-mono font-tabular">
+          <span class="text-xs text-slate-500 font-mono font-tabular">
             {{ formatBytes(torrent.size) }}
           </span>
-          <span class="text-xs text-gray-500 font-mono font-tabular" :title="getSwarmTitle(torrent)">
+          <span class="text-xs text-slate-500 font-mono font-tabular" :title="getSwarmTitle(torrent)">
             做种 {{ swarmTexts.seeds }} • 下载 {{ swarmTexts.peers }}
           </span>
         </div>
@@ -147,8 +95,8 @@ const getStateText = (state: TorrentState) => {
     <!-- 进度条 -->
     <div class="mb-3">
       <div class="flex items-center justify-between text-xs mb-1">
-        <span class="font-mono font-tabular text-gray-600">{{ (torrent.progress * 100).toFixed(1) }}%</span>
-        <span class="text-gray-500">{{ formatBytes(torrent.size * torrent.progress) }}</span>
+        <span class="font-mono font-tabular text-slate-600">{{ (torrent.progress * 100).toFixed(1) }}%</span>
+        <span class="text-slate-500">{{ formatBytes(torrent.size * torrent.progress) }}</span>
       </div>
       <div class="progress-bar">
         <div
@@ -156,7 +104,7 @@ const getStateText = (state: TorrentState) => {
           :class="{
             'bg-cyan-500': torrent.progress >= 1,
             'bg-blue-500': torrent.progress > 0 && torrent.progress < 1,
-            'bg-gray-300': torrent.progress === 0
+            'bg-slate-300': torrent.progress === 0
           }"
           :style="{ width: `${Math.max(torrent.progress * 100, 2)}%` }"
         />
@@ -168,22 +116,22 @@ const getStateText = (state: TorrentState) => {
       <div class="flex items-center gap-3">
         <div class="flex items-center gap-1">
           <Icon name="download" color="blue" :size="12" />
-          <span class="font-mono font-tabular text-gray-700">{{ formatSpeed(torrent.dlspeed) }}</span>
+          <span class="font-mono font-tabular text-slate-700">{{ formatSpeed(torrent.dlspeed) }}</span>
         </div>
         <div class="flex items-center gap-1">
           <Icon name="upload-cloud" color="cyan" :size="12" />
-          <span class="font-mono font-tabular text-gray-700">{{ formatSpeed(torrent.upspeed) }}</span>
+          <span class="font-mono font-tabular text-slate-700">{{ formatSpeed(torrent.upspeed) }}</span>
         </div>
       </div>
 
-      <div class="text-gray-500 font-mono font-tabular">
+      <div class="text-slate-500 font-mono font-tabular">
         比率 {{ torrent.ratio.toFixed(2) }}
       </div>
     </div>
 
     <!-- ETA (仅在下载时显示) -->
-    <div v-if="torrent.state === 'downloading' && torrent.eta > 0" class="mt-2 pt-2 border-t border-gray-200">
-      <div class="text-xs text-gray-500 flex items-center gap-1">
+    <div v-if="torrent.state === 'downloading' && torrent.eta > 0" class="mt-2 pt-2 border-t border-slate-200">
+      <div class="text-xs text-slate-500 flex items-center gap-1">
         <Icon name="clock" color="gray" :size="12" />
         <span>剩余 {{ formatEta(torrent.eta, torrent.progress, torrent.state) }}</span>
       </div>

@@ -8,7 +8,7 @@ const iconColors = {
   blue: 'text-blue-500',
   cyan: 'text-cyan-500',
   green: 'text-green-500',
-  gray: 'text-gray-400',
+  gray: 'text-slate-400',
   purple: 'text-purple-500',
   red: 'text-red-500',
   yellow: 'text-yellow-500',

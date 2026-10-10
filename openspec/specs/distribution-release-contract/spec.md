@@ -1,7 +1,7 @@
 # distribution-release-contract Specification
 
 ## Purpose
-TBD - created by archiving change harden-distribution-contract. Update Purpose after archive.
+约束 `pnpm build:publish` 生成的 latest.json、manifest.json、loader.html 与 dist.zip 的文件布局、相对路径语义与校验字段，防止发布回归同时打坏多种分发路径。
 ## Requirements
 ### Requirement: Build publish SHALL emit a canonical release artifact set
 `pnpm build:publish` SHALL generate a self-consistent release artifact set that can be consumed by `Loader`, `Sidecar`, and manual `Dist` installs without relying on undocumented file names or absolute URLs.

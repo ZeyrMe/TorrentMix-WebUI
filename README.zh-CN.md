@@ -33,10 +33,10 @@
 | 层级 | 技术 |
 |------|------|
 | 框架 | Vue 3 · TypeScript · Vite |
-| 样式 | Tailwind CSS · Shadcn Vue |
+| 样式 | Tailwind CSS（无组件库，自研轻量组件） |
 | 状态 | Pinia · `shallowRef<Map>` 高性能存储 |
 | 网络 | Axios · 自定义拦截器 |
-| 性能 | @tanstack/vue-virtual · Fuse.js |
+| 性能 | @tanstack/vue-virtual |
 
 ## 快速开始
 

@@ -4,6 +4,7 @@ import type { AddTorrentParams } from '@/adapter/interface'
 import { useBackendStore } from '@/store/backend'
 import Icon from '@/components/Icon.vue'
 import SafeText from '@/components/SafeText.vue'
+import { useModalKeyboard } from '@/composables/useModalKeyboard'
 
 interface Props {
   open: boolean
@@ -18,6 +19,9 @@ const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
 const backendStore = useBackendStore()
+
+const panelRef = ref<HTMLElement | null>(null)
+useModalKeyboard(panelRef, () => emit('close'), computed(() => props.open))
 
 // 表单状态
 const activeTab = ref<'url' | 'file'>('url')
@@ -147,19 +151,24 @@ async function handleSubmit() {
         >
           <div
             v-if="open"
-            class="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden"
+            ref="panelRef"
+            tabindex="-1"
+            role="dialog"
+            aria-modal="true"
+            aria-label="添加种子"
+            class="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden outline-none"
             @click.stop
           >
             <!-- 头部 -->
-            <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-              <h2 class="text-lg font-semibold text-gray-900">添加种子</h2>
+            <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+              <h2 class="text-lg font-semibold text-slate-900">添加种子</h2>
               <button
                 type="button"
                 @click="$emit('close')"
-                class="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                class="p-1 hover:bg-slate-100 rounded-lg transition-colors"
                 aria-label="关闭添加种子对话框"
               >
-                <Icon name="x" :size="20" class="text-gray-500" />
+                <Icon name="x" :size="20" class="text-slate-500" />
               </button>
             </div>
 
@@ -173,7 +182,7 @@ async function handleSubmit() {
                   :class="`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
                     activeTab === 'url'
                       ? 'bg-black text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                   }`"
                 >
                   Magnet 链接 / URL
@@ -184,7 +193,7 @@ async function handleSubmit() {
                   :class="`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
                     activeTab === 'file'
                       ? 'bg-black text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                   }`"
                 >
                   种子文件
@@ -193,7 +202,7 @@ async function handleSubmit() {
 
               <!-- URL 输入 -->
               <div v-if="activeTab === 'url'" class="space-y-4">
-                <label for="add-torrent-url" class="block text-sm font-medium text-gray-700">
+                <label for="add-torrent-url" class="block text-sm font-medium text-slate-700">
                   Magnet 链接或 torrent URL
                 </label>
                 <textarea
@@ -205,25 +214,25 @@ async function handleSubmit() {
                   autocomplete="off"
                   spellcheck="false"
                 />
-                <p class="text-xs text-gray-500">
+                <p class="text-xs text-slate-500">
                   支持 magnet 链接和 HTTP(S) torrent URL，每行一个
                 </p>
               </div>
 
               <!-- 文件上传 -->
               <div v-else class="space-y-4">
-                <label for="add-torrent-file" class="block text-sm font-medium text-gray-700">
+                <label for="add-torrent-file" class="block text-sm font-medium text-slate-700">
                   选择 .torrent 文件
                 </label>
                 <button
                   type="button"
                   @click="handleFileClick"
-                  class="w-full border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-gray-400 transition-colors"
+                  class="w-full border-2 border-dashed border-slate-300 rounded-lg p-8 text-center cursor-pointer hover:border-slate-400 transition-colors"
                   aria-label="选择 torrent 文件"
                 >
-                  <Icon name="upload-cloud" :size="40" class="text-gray-400 mx-auto mb-3" />
-                  <p class="text-sm text-gray-600">点击选择文件或拖拽到此处</p>
-                  <p class="text-xs text-gray-500 mt-1">支持多个文件</p>
+                  <Icon name="upload-cloud" :size="40" class="text-slate-400 mx-auto mb-3" />
+                  <p class="text-sm text-slate-600">点击选择文件或拖拽到此处</p>
+                  <p class="text-xs text-slate-500 mt-1">支持多个文件</p>
                 </button>
                 <input
                   id="add-torrent-file"
@@ -238,22 +247,22 @@ async function handleSubmit() {
 
                 <!-- 已选文件列表 -->
                 <div v-if="selectedFiles.length > 0" class="space-y-2">
-                  <p class="text-sm font-medium text-gray-700">已选择 {{ selectedFiles.length }} 个文件：</p>
+                  <p class="text-sm font-medium text-slate-700">已选择 {{ selectedFiles.length }} 个文件：</p>
                   <div class="space-y-1">
                     <div
                       v-for="(file, index) in selectedFiles"
                       :key="index"
-                      class="flex items-center justify-between p-2 bg-gray-50 rounded-lg text-sm"
+                      class="flex items-center justify-between p-2 bg-slate-50 rounded-lg text-sm"
                     >
                       <span class="truncate flex-1">{{ file.name }}</span>
-                      <span class="text-xs text-gray-500 mr-2">{{ (file.size / 1024 / 1024).toFixed(2) }} MB</span>
+                      <span class="text-xs text-slate-500 mr-2">{{ (file.size / 1024 / 1024).toFixed(2) }} MB</span>
                       <button
                         type="button"
                         @click="removeFile(index)"
-                        class="p-1 hover:bg-gray-200 rounded transition-colors"
+                        class="p-1 hover:bg-slate-200 rounded transition-colors"
                         :aria-label="`移除文件 ${file.name}`"
                       >
-                        <Icon name="x" :size="16" class="text-gray-500" />
+                        <Icon name="x" :size="16" class="text-slate-500" />
                       </button>
                     </div>
                   </div>
@@ -261,10 +270,10 @@ async function handleSubmit() {
               </div>
 
               <!-- 选项 -->
-              <div class="mt-6 space-y-4 pt-6 border-t border-gray-200">
+              <div class="mt-6 space-y-4 pt-6 border-t border-slate-200">
                 <!-- 分类（可选） -->
                 <div v-if="backendStore.isQbit">
-                  <label for="add-torrent-category" class="block text-sm font-medium text-gray-700 mb-1">
+                  <label for="add-torrent-category" class="block text-sm font-medium text-slate-700 mb-1">
                     分类（可选）
                   </label>
                   <select
@@ -282,7 +291,7 @@ async function handleSubmit() {
 
                 <!-- 标签输入 -->
                 <div>
-                  <label for="add-torrent-tag-input" class="block text-sm font-medium text-gray-700 mb-1">
+                  <label for="add-torrent-tag-input" class="block text-sm font-medium text-slate-700 mb-1">
                     标签（可选）
                   </label>
                   <div class="space-y-2">
@@ -290,7 +299,7 @@ async function handleSubmit() {
                       <span
                         v-for="(tag, index) in tags"
                         :key="index"
-                        class="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 rounded text-sm"
+                        class="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 rounded text-sm"
                       >
                         <SafeText as="span" :text="tag" />
                         <button
@@ -315,13 +324,13 @@ async function handleSubmit() {
                       spellcheck="false"
                     />
                   </div>
-                  <p v-if="backendStore.isTrans" class="text-xs text-gray-500 mt-1">
+                  <p v-if="backendStore.isTrans" class="text-xs text-slate-500 mt-1">
                     Transmission：标签会作为 labels 存储
                   </p>
                 </div>
 
                 <div>
-                  <label for="add-torrent-save-path" class="block text-sm font-medium text-gray-700 mb-1">
+                  <label for="add-torrent-save-path" class="block text-sm font-medium text-slate-700 mb-1">
                     {{ backendStore.isTrans ? '下载目录（可选）' : '保存路径（可选）' }}
                   </label>
                   <input
@@ -341,9 +350,9 @@ async function handleSubmit() {
                     v-model="paused"
                     name="paused"
                     type="checkbox"
-                    class="w-4 h-4 rounded border-gray-300 text-black focus:ring-black"
+                    class="w-4 h-4 rounded border-slate-300 text-black focus:ring-black"
                   />
-                  <span class="text-sm text-gray-700">添加后暂停</span>
+                  <span class="text-sm text-slate-700">添加后暂停</span>
                 </label>
 
                 <label class="flex items-center gap-3 cursor-pointer">
@@ -351,19 +360,19 @@ async function handleSubmit() {
                     v-model="skipChecking"
                     name="skipChecking"
                     type="checkbox"
-                    class="w-4 h-4 rounded border-gray-300 text-black focus:ring-black"
+                    class="w-4 h-4 rounded border-slate-300 text-black focus:ring-black"
                   />
-                  <span class="text-sm text-gray-700">跳过校验</span>
+                  <span class="text-sm text-slate-700">跳过校验</span>
                 </label>
               </div>
             </div>
 
             <!-- 底部按钮 -->
-            <div class="px-6 py-4 bg-gray-50 flex justify-end gap-3">
+            <div class="px-6 py-4 bg-slate-50 flex justify-end gap-3">
               <button
                 type="button"
                 @click="$emit('close')"
-                class="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 rounded-lg transition-colors"
+                class="btn"
               >
                 取消
               </button>
@@ -371,7 +380,7 @@ async function handleSubmit() {
                 type="button"
                 @click="handleSubmit"
                 :disabled="(!urlText.trim() && selectedFiles.length === 0)"
-                class="px-4 py-2 text-sm font-medium text-white bg-black hover:bg-gray-800 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                class="btn btn-primary"
               >
                 添加
               </button>

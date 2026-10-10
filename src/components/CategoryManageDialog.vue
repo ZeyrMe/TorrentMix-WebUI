@@ -4,6 +4,9 @@ import { useBackendStore } from '@/store/backend'
 import type { Category } from '@/adapter/types'
 import Icon from '@/components/Icon.vue'
 import SafeText from '@/components/SafeText.vue'
+import BaseDialog from '@/components/ui/BaseDialog.vue'
+import Spinner from '@/components/ui/Spinner.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
 import { useUiOverlay } from '@/composables/useUiOverlay'
 
 const backendStore = useBackendStore()
@@ -24,6 +27,13 @@ const form = ref({
   savePath: ''
 })
 
+function notifyError(err: unknown, fallback: string) {
+  overlay.notify({
+    message: err instanceof Error ? err.message : fallback,
+    tone: 'danger',
+  })
+}
+
 // 加载分类列表
 async function loadCategories() {
   loading.value = true
@@ -31,7 +41,7 @@ async function loadCategories() {
     categories.value = await adapter.value.getCategories()
   } catch (err) {
     console.error('[CategoryManage] Load failed:', err)
-    alert(err instanceof Error ? err.message : '加载分类失败')
+    notifyError(err, '加载分类失败')
   } finally {
     loading.value = false
   }
@@ -47,7 +57,7 @@ async function handleCreate() {
     await loadCategories()
   } catch (err) {
     console.error('[CategoryManage] Create failed:', err)
-    alert(err instanceof Error ? err.message : '创建分类失败')
+    notifyError(err, '创建分类失败')
   }
 }
 
@@ -78,7 +88,7 @@ async function handleEdit() {
     await loadCategories()
   } catch (err) {
     console.error('[CategoryManage] Edit failed:', err)
-    alert(err instanceof Error ? err.message : '编辑分类失败')
+    notifyError(err, '编辑分类失败')
   }
 }
 
@@ -104,13 +114,20 @@ async function handleDelete(name: string) {
     await loadCategories()
   } catch (err) {
     console.error('[CategoryManage] Delete failed:', err)
-    alert(err instanceof Error ? err.message : '删除分类失败')
+    notifyError(err, '删除分类失败')
   }
 }
 
 // 设置保存路径
 async function handleSetSavePath(name: string) {
-  const path = prompt('输入保存路径:')
+  const values = await overlay.openForm({
+    title: '设置保存路径',
+    fields: [
+      { key: 'path', label: '保存路径', placeholder: '例如 /downloads/movies', required: true },
+    ],
+  })
+  if (!values) return
+  const path = values.path?.trim()
   if (!path) return
 
   try {
@@ -118,7 +135,7 @@ async function handleSetSavePath(name: string) {
     await loadCategories()
   } catch (err) {
     console.error('[CategoryManage] Set save path failed:', err)
-    alert(err instanceof Error ? err.message : '设置保存路径失败')
+    notifyError(err, '设置保存路径失败')
   }
 }
 
@@ -128,106 +145,86 @@ onMounted(() => {
 </script>
 
 <template>
-  <div
-    class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-    @click.self="emit('close')"
-  >
-    <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[calc(100vh-2rem)] overflow-hidden flex flex-col">
-      <!-- 标题栏 -->
-      <div class="px-4 py-3 sm:px-6 sm:py-4 border-b flex items-center justify-between">
-        <h2 class="text-lg font-semibold">分类管理</h2>
-        <button @click="emit('close')" class="p-1 hover:bg-gray-100 rounded">
-          <Icon name="x" :size="16" />
+  <BaseDialog title="分类管理" max-width="max-w-2xl" @close="emit('close')">
+    <!-- 创建/编辑表单 -->
+    <div class="mb-6 p-4 bg-slate-50 rounded-xl">
+      <h3 class="text-sm font-medium mb-3">
+        {{ editing ? '编辑分类' : '创建分类' }}
+      </h3>
+      <div class="flex flex-col sm:flex-row gap-3">
+        <input
+          v-model="form.name"
+          type="text"
+          placeholder="分类名称"
+          class="input flex-1"
+        />
+        <input
+          v-model="form.savePath"
+          type="text"
+          placeholder="保存路径 (可选)"
+          class="input flex-1"
+        />
+        <button
+          v-if="!editing"
+          @click="handleCreate"
+          :disabled="!form.name.trim()"
+          class="btn btn-primary"
+        >
+          创建
         </button>
-      </div>
-
-      <!-- 内容区 -->
-      <div class="flex-1 overflow-auto p-4 sm:p-6">
-        <!-- 创建/编辑表单 -->
-        <div class="mb-6 p-4 bg-gray-50 rounded-lg">
-          <h3 class="text-sm font-medium mb-3">
-            {{ editing ? '编辑分类' : '创建分类' }}
-          </h3>
-          <div class="flex flex-col sm:flex-row gap-3">
-            <input
-              v-model="form.name"
-              type="text"
-              placeholder="分类名称"
-              class="flex-1 px-3 py-2 border rounded text-sm"
-            />
-            <input
-              v-model="form.savePath"
-              type="text"
-              placeholder="保存路径 (可选)"
-              class="flex-1 px-3 py-2 border rounded text-sm"
-            />
-            <button
-              v-if="!editing"
-              @click="handleCreate"
-              :disabled="!form.name.trim()"
-              class="px-4 py-2 bg-black text-white rounded text-sm disabled:opacity-50"
-            >
-              创建
-            </button>
-            <template v-else>
-              <button
-                @click="handleEdit"
-                class="px-4 py-2 bg-black text-white rounded text-sm"
-              >
-                保存
-              </button>
-              <button
-                @click="cancelEdit"
-                class="px-4 py-2 border rounded text-sm"
-              >
-                取消
-              </button>
-            </template>
-          </div>
-        </div>
-
-        <!-- 分类列表 -->
-        <div v-if="loading" class="text-center text-gray-500 py-8">
-          加载中...
-        </div>
-        <div v-else-if="categories.size === 0" class="text-center text-gray-500 py-8">
-          暂无分类
-        </div>
-        <div v-else class="space-y-2">
-          <div
-            v-for="[name, cat] in categories"
-            :key="name"
-            class="flex items-center gap-3 p-3 border rounded hover:bg-gray-50"
+        <template v-else>
+          <button
+            @click="handleEdit"
+            class="btn btn-primary"
           >
-            <Icon name="folder" :size="16" class="text-gray-400" />
-            <SafeText as="span" class="flex-1 font-medium" :text="name" />
-            <span class="text-sm text-gray-500 truncate max-w-[40vw] sm:max-w-[200px]">
-              {{ cat.savePath || '默认路径' }}
-            </span>
-            <button
-              @click="startEdit(name)"
-              class="p-1 hover:bg-gray-200 rounded"
-              title="编辑"
-            >
-              <Icon name="edit-2" :size="14" />
-            </button>
-            <button
-              @click="handleSetSavePath(name)"
-              class="p-1 hover:bg-gray-200 rounded"
-              title="设置路径"
-            >
-              <Icon name="folder-open" :size="14" />
-            </button>
-            <button
-              @click="handleDelete(name)"
-              class="p-1 hover:bg-red-50 text-red-600 rounded"
-              title="删除"
-            >
-              <Icon name="trash-2" :size="14" />
-            </button>
-          </div>
-        </div>
+            保存
+          </button>
+          <button
+            @click="cancelEdit"
+            class="btn"
+          >
+            取消
+          </button>
+        </template>
       </div>
     </div>
-  </div>
+
+    <!-- 分类列表 -->
+    <Spinner v-if="loading" />
+    <EmptyState v-else-if="categories.size === 0">暂无分类</EmptyState>
+    <div v-else class="space-y-2">
+      <div
+        v-for="[name, cat] in categories"
+        :key="name"
+        class="flex items-center gap-3 p-3 border rounded-xl hover:bg-slate-50"
+      >
+        <Icon name="folder" :size="16" class="text-slate-400" />
+        <SafeText as="span" class="flex-1 font-medium" :text="name" />
+        <span class="text-sm text-slate-500 truncate max-w-[40vw] sm:max-w-[200px]">
+          {{ cat.savePath || '默认路径' }}
+        </span>
+        <button
+          @click="startEdit(name)"
+          class="p-1 hover:bg-slate-200 rounded"
+          title="编辑"
+        >
+          <Icon name="edit-2" :size="14" />
+        </button>
+        <button
+          @click="handleSetSavePath(name)"
+          class="p-1 hover:bg-slate-200 rounded"
+          title="设置路径"
+        >
+          <Icon name="folder-open" :size="14" />
+        </button>
+        <button
+          @click="handleDelete(name)"
+          class="p-1 hover:bg-red-50 text-red-600 rounded"
+          title="删除"
+        >
+          <Icon name="trash-2" :size="14" />
+        </button>
+      </div>
+    </div>
+  </BaseDialog>
 </template>

@@ -12,6 +12,7 @@ import { useDragResize } from '@/composables/useDragResize'
 import { useTableColumns } from '@/composables/useTableColumns'
 import { FILE_TABLE_COLUMNS, TRACKER_TABLE_COLUMNS, PEER_TABLE_COLUMNS } from '@/composables/useTableColumns/configs'
 import ResizableTableHeader from '@/components/table/ResizableTableHeader.vue'
+import { useModalKeyboard } from '@/composables/useModalKeyboard'
 
 interface Props {
   torrent: UnifiedTorrent | null
@@ -341,7 +342,7 @@ function getHealthStatus(torrent: UnifiedTorrent) {
   if (!hasSeeds && !hasPeers && !hasConnectedSeeds && !hasConnectedPeers && !hasTotalSeeds && !hasTotalPeers) {
     return {
       text: '未知',
-      classes: 'text-gray-600 bg-gray-100',
+      classes: 'text-slate-600 bg-slate-100',
       title: '后端未提供做种/下载者统计',
     }
   }
@@ -354,7 +355,7 @@ function getHealthStatus(torrent: UnifiedTorrent) {
   if (seeds >= 5) return { text: '良好', classes: 'text-blue-700 bg-blue-100', title: '做种 >= 5' }
   if (seeds >= 1) return { text: '一般', classes: 'text-yellow-700 bg-yellow-100', title: '做种 >= 1' }
   if (peers > 0) return { text: '无种子', classes: 'text-red-700 bg-red-100', title: '下载者 > 0 但做种为 0' }
-  return { text: '无同伴', classes: 'text-gray-700 bg-gray-100', title: '做种/下载者均为 0（可能尚未 announce 或暂时无同伴）' }
+  return { text: '无同伴', classes: 'text-slate-700 bg-slate-100', title: '做种/下载者均为 0（可能尚未 announce 或暂时无同伴）' }
 }
 
 function formatCountPair(connected?: number | null, total?: number | null, best?: number | null): string {
@@ -412,15 +413,15 @@ const trackerStatusMap: Record<string, { text: string; class: string; icon: stri
   working: { text: '工作中', class: 'bg-green-100 text-green-700', icon: '●' },
   updating: { text: '更新中', class: 'bg-yellow-100 text-yellow-700', icon: '○' },
   not_working: { text: '未工作', class: 'bg-red-100 text-red-700', icon: '●' },
-  disabled: { text: '已禁用', class: 'bg-gray-100 text-gray-600', icon: '○' }
+  disabled: { text: '已禁用', class: 'bg-slate-100 text-slate-600', icon: '○' }
 }
 
 // 文件优先级映射
 const priorityMap: Record<string, { text: string; class: string }> = {
   high: { text: '高', class: 'text-red-600' },
-  normal: { text: '普通', class: 'text-gray-600' },
+  normal: { text: '普通', class: 'text-slate-600' },
   low: { text: '低', class: 'text-blue-600' },
-  do_not_download: { text: '跳过', class: 'text-gray-400 line-through' }
+  do_not_download: { text: '跳过', class: 'text-slate-400 line-through' }
 }
 
 const selectedTrackerUrls = ref<Set<string>>(new Set())
@@ -453,6 +454,8 @@ function clearPeerSelection() {
 }
 
 const showLimitDialog = ref(false)
+const limitDialogPanelRef = ref<HTMLElement | null>(null)
+useModalKeyboard(limitDialogPanelRef, () => { showLimitDialog.value = false }, computed(() => showLimitDialog.value))
 const dlLimitInput = ref('')
 const upLimitInput = ref('')
 
@@ -1235,22 +1238,22 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
   <!-- 底部详情面板 -->
   <div
     v-show="visible"
-    class="border-t border-gray-200 bg-white flex flex-col"
+    class="border-t border-slate-200 bg-white flex flex-col"
     :style="panelStyle"
   >
     <!-- 顶部拖拽调整条 -->
     <div
       @pointerdown="startResize"
-      class="h-1 bg-gray-200 hover:bg-gray-300 cursor-ns-resize flex-shrink-0 relative group touch-none select-none"
+      class="h-1 bg-slate-200 hover:bg-slate-300 cursor-ns-resize flex-shrink-0 relative group touch-none select-none"
       :class="{ 'bg-blue-400': isResizing }"
     >
       <div class="absolute inset-x-0 top-0 h-2 -translate-y-1 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-        <div class="h-0.5 w-12 bg-gray-400 rounded"></div>
+        <div class="h-0.5 w-12 bg-slate-400 rounded"></div>
       </div>
     </div>
 
     <!-- 面板头部 -->
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between px-4 py-3 border-b border-gray-200 bg-gray-50 flex-shrink-0">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between px-4 py-3 border-b border-slate-200 bg-slate-50 flex-shrink-0">
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4 flex-1 min-w-0">
         <!-- 种子基本信息 -->
         <div class="flex items-center gap-3 flex-1 min-w-0">
@@ -1262,10 +1265,10 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
           <div class="min-w-0 flex-1">
             <SafeText
               as="h3"
-              class="font-semibold text-gray-900 truncate"
+              class="font-semibold text-slate-900 truncate"
               :text="torrent?.name || '选择一个种子查看详情'"
             />
-            <div v-if="torrent" class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs sm:text-sm text-gray-500 mt-1">
+            <div v-if="torrent" class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs sm:text-sm text-slate-500 mt-1">
               <span>{{ formatBytes(torrent.size) }}</span>
               <span>进度 {{ (torrent.progress * 100).toFixed(1) }}%</span>
               <span class="hidden sm:inline">比率 {{ torrent.ratio.toFixed(2) }}</span>
@@ -1289,7 +1292,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
         </div>
 
         <!-- Tab 切换 -->
-        <nav class="flex gap-1 p-1 bg-gray-100 rounded-lg overflow-x-auto max-w-full">
+        <nav class="flex gap-1 p-1 bg-slate-100 rounded-lg overflow-x-auto max-w-full">
           <button
             v-for="tab in [
               { key: 'overview', label: '概览', icon: 'bar-chart-3' },
@@ -1304,8 +1307,8 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
             :class="[
               'flex items-center gap-2 px-2 sm:px-3 py-1.5 rounded text-sm font-medium transition-colors whitespace-nowrap',
               activeTab === tab.key
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                ? 'bg-white text-slate-900 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
             ]"
           >
             <Icon :name="tab.icon" :size="14" />
@@ -1424,7 +1427,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
     <div class="flex-1 overflow-hidden">
       <!-- 加载状态 -->
       <div v-if="loading" class="flex items-center justify-center h-full">
-        <div class="flex items-center gap-3 text-gray-500">
+        <div class="flex items-center gap-3 text-slate-500">
           <Icon name="loader-2" :size="20" class="animate-spin" />
           <span>加载详情中...</span>
         </div>
@@ -1441,8 +1444,8 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
 
       <!-- 无种子选择 -->
       <div v-else-if="!torrent" class="flex items-center justify-center h-full">
-        <div class="text-center text-gray-500">
-          <Icon name="mouse-pointer-click" :size="24" class="mx-auto mb-3 text-gray-300" />
+        <div class="text-center text-slate-500">
+          <Icon name="mouse-pointer-click" :size="24" class="mx-auto mb-3 text-slate-300" />
           <p>点击上方种子列表中的任意种子查看详情</p>
         </div>
       </div>
@@ -1454,25 +1457,25 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <!-- 传输统计 -->
             <div class="space-y-4">
-              <h4 class="font-semibold text-gray-900 flex items-center gap-2">
+              <h4 class="font-semibold text-slate-900 flex items-center gap-2">
                 <Icon name="activity" :size="16" />
                 传输统计
               </h4>
-              <div class="bg-gray-50 rounded-lg p-4 space-y-3">
+              <div class="bg-slate-50 rounded-lg p-4 space-y-3">
                 <div class="flex justify-between">
-                  <span class="text-gray-600">下载速度</span>
+                  <span class="text-slate-600">下载速度</span>
                   <span class="font-mono font-medium">{{ formatSpeed(torrent.dlspeed) }}</span>
                 </div>
                 <div class="flex justify-between">
-                  <span class="text-gray-600">上传速度</span>
+                  <span class="text-slate-600">上传速度</span>
                   <span class="font-mono font-medium">{{ formatSpeed(torrent.upspeed) }}</span>
                 </div>
                 <div class="flex justify-between">
-                  <span class="text-gray-600">已下载</span>
+                  <span class="text-slate-600">已下载</span>
                   <span class="font-mono font-medium">{{ formatBytes(torrent.size * torrent.progress) }}</span>
                 </div>
                 <div class="flex justify-between">
-                  <span class="text-gray-600">剩余时间</span>
+                  <span class="text-slate-600">剩余时间</span>
                   <span class="font-mono font-medium">{{ torrent.eta ? formatETA(torrent.eta) : '∞' }}</span>
                 </div>
               </div>
@@ -1480,25 +1483,25 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
 
             <!-- 连接统计 -->
             <div class="space-y-4">
-              <h4 class="font-semibold text-gray-900 flex items-center gap-2">
+              <h4 class="font-semibold text-slate-900 flex items-center gap-2">
                 <Icon name="wifi" :size="16" />
                 连接统计
               </h4>
-              <div class="bg-gray-50 rounded-lg p-4 space-y-3">
+              <div class="bg-slate-50 rounded-lg p-4 space-y-3">
                 <div class="flex justify-between">
-                  <span class="text-gray-600">做种</span>
+                  <span class="text-slate-600">做种</span>
                   <span class="font-mono font-medium">{{ formatCountPair(torrent.connectedSeeds, torrent.totalSeeds, torrent.numSeeds) }}</span>
                 </div>
                 <div class="flex justify-between">
-                  <span class="text-gray-600">下载者</span>
+                  <span class="text-slate-600">下载者</span>
                   <span class="font-mono font-medium">{{ formatCountPair(torrent.connectedPeers, torrent.totalPeers, torrent.numPeers) }}</span>
                 </div>
                 <div class="flex justify-between">
-                  <span class="text-gray-600">总数</span>
+                  <span class="text-slate-600">总数</span>
                   <span class="font-mono font-medium">{{ formatTotalPeers(torrent) }}</span>
                 </div>
                 <div class="flex justify-between">
-                  <span class="text-gray-600">健康状态</span>
+                  <span class="text-slate-600">健康状态</span>
                   <span
                     class="inline-flex items-center px-2 py-1 rounded text-xs font-medium"
                     :class="getHealthStatus(torrent).classes"
@@ -1513,16 +1516,16 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
 
           <!-- 进度条详细信息 -->
           <div class="space-y-4">
-            <h4 class="font-semibold text-gray-900 flex items-center gap-2">
+            <h4 class="font-semibold text-slate-900 flex items-center gap-2">
               <Icon name="trending-up" :size="16" />
               下载进度
             </h4>
-            <div class="bg-gray-50 rounded-lg p-4">
-              <div class="flex justify-between text-sm text-gray-600 mb-2">
+            <div class="bg-slate-50 rounded-lg p-4">
+              <div class="flex justify-between text-sm text-slate-600 mb-2">
                 <span>{{ (torrent.progress * 100).toFixed(2) }}% 完成</span>
                 <span>{{ formatBytes(torrent.size * torrent.progress) }} / {{ formatBytes(torrent.size) }}</span>
               </div>
-              <div class="w-full bg-gray-200 rounded-full h-3">
+              <div class="w-full bg-slate-200 rounded-full h-3">
                 <div
                   class="bg-gradient-to-r from-blue-500 to-cyan-500 h-3 rounded-full transition-[width] duration-300"
                   :style="{ width: `${Math.max(torrent.progress * 100, 1)}%` }"
@@ -1533,22 +1536,22 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
 
           <!-- 限速与优先级 -->
           <div class="space-y-4">
-            <h4 class="font-semibold text-gray-900 flex items-center gap-2">
+            <h4 class="font-semibold text-slate-900 flex items-center gap-2">
               <Icon name="sliders" :size="16" />
               限速与优先级
             </h4>
-            <div class="bg-gray-50 rounded-lg p-4 space-y-3">
+            <div class="bg-slate-50 rounded-lg p-4 space-y-3">
               <div class="flex justify-between">
-                <span class="text-gray-600">下载限速</span>
+                <span class="text-slate-600">下载限速</span>
                 <span class="font-mono font-medium">{{ detail.dlLimit > 0 ? formatSpeed(detail.dlLimit) : '∞' }}</span>
               </div>
               <div class="flex justify-between">
-                <span class="text-gray-600">上传限速</span>
+                <span class="text-slate-600">上传限速</span>
                 <span class="font-mono font-medium">{{ detail.upLimit > 0 ? formatSpeed(detail.upLimit) : '∞' }}</span>
               </div>
 
               <div v-if="canBandwidthPriority" class="flex justify-between items-center gap-4">
-                <span class="text-gray-600">带宽优先级</span>
+                <span class="text-slate-600">带宽优先级</span>
                 <select
                   :value="detail.bandwidthPriority || 'normal'"
                   @click.stop
@@ -1571,13 +1574,13 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
 
           <!-- 高级开关 -->
           <div v-if="canTorrentAdvancedSwitches" class="space-y-4">
-            <h4 class="font-semibold text-gray-900 flex items-center gap-2">
+            <h4 class="font-semibold text-slate-900 flex items-center gap-2">
               <Icon name="settings" :size="16" />
               高级开关
             </h4>
-            <div class="bg-gray-50 rounded-lg p-4 space-y-3">
+            <div class="bg-slate-50 rounded-lg p-4 space-y-3">
               <label v-if="canAutoManagement" class="flex items-center justify-between gap-4">
-                <span class="text-gray-700">自动管理</span>
+                <span class="text-slate-700">自动管理</span>
                 <input
                   type="checkbox"
                   :checked="detail.autoManagement === true"
@@ -1587,7 +1590,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                 />
               </label>
               <label v-if="canSequentialDownload" class="flex items-center justify-between gap-4">
-                <span class="text-gray-700">顺序下载</span>
+                <span class="text-slate-700">顺序下载</span>
                 <input
                   type="checkbox"
                   :checked="detail.sequentialDownload === true"
@@ -1597,7 +1600,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                 />
               </label>
               <label v-if="canFirstLastPiecePriority" class="flex items-center justify-between gap-4">
-                <span class="text-gray-700">首尾块优先</span>
+                <span class="text-slate-700">首尾块优先</span>
                 <input
                   type="checkbox"
                   :checked="detail.firstLastPiecePriority === true"
@@ -1607,7 +1610,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                 />
               </label>
               <label v-if="canSuperSeeding" class="flex items-center justify-between gap-4">
-                <span class="text-gray-700">超级做种</span>
+                <span class="text-slate-700">超级做种</span>
                 <input
                   type="checkbox"
                   :checked="detail.superSeeding === true"
@@ -1638,7 +1641,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                   @click="toggleFolder(node.path)"
                   @keydown="handleFolderRowKeydown($event, node.path)"
                   @contextmenu="openFileContextMenu($event, node)"
-                  class="flex items-center py-1.5 hover:bg-gray-50 border-b border-gray-100 cursor-pointer text-sm"
+                  class="flex items-center py-1.5 hover:bg-slate-50 border-b border-slate-100 cursor-pointer text-sm"
                   role="button"
                   tabindex="0"
                   :aria-label="`${expandedFolders.has(node.path) ? '折叠' : '展开'}文件夹 ${node.name}`"
@@ -1652,15 +1655,15 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                       <Icon
                         :name="expandedFolders.has(node.path) ? 'chevron-down' : 'chevron-right'"
                         :size="12"
-                        class="text-gray-400 shrink-0 mr-1"
+                        class="text-slate-400 shrink-0 mr-1"
                       />
                       <Icon name="folder" :size="14" class="text-yellow-500 shrink-0 mr-1.5" />
-                      <span class="truncate text-gray-700 flex-1 min-w-0">{{ node.name }}</span>
+                      <span class="truncate text-slate-700 flex-1 min-w-0">{{ node.name }}</span>
                       <button
                         v-if="canRenameFolder"
                         type="button"
                         @click.stop="handleRenamePath(node)"
-                        class="ml-2 p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 shrink-0"
+                        class="ml-2 p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-700 shrink-0"
                         aria-label="重命名文件夹"
                         title="重命名文件夹"
                         :disabled="mutating"
@@ -1671,7 +1674,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                         v-if="canMoveFolder"
                         type="button"
                         @click.stop="handleMovePath(node)"
-                        class="ml-1 p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 shrink-0"
+                        class="ml-1 p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-700 shrink-0"
                         aria-label="移动文件夹"
                         title="移动文件夹"
                         :disabled="mutating"
@@ -1683,7 +1686,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
 
                   <!-- 大小 -->
                   <div
-                    class="px-3 text-right font-mono text-xs text-gray-500"
+                    class="px-3 text-right font-mono text-xs text-slate-500"
                     :style="getFlexStyle(filesColumnById, 'size', false, filesResizeState.isResizing)"
                   >
                     {{ formatBytes(calculateFolderStats(node).size) }}
@@ -1692,20 +1695,20 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                   <!-- 进度 -->
                   <div class="px-3" :style="getFlexStyle(filesColumnById, 'progress', false, filesResizeState.isResizing)">
                         <div class="flex items-center gap-1.5 justify-end">
-                          <div class="flex-1 bg-gray-200 rounded h-1 min-w-0">
+                          <div class="flex-1 bg-slate-200 rounded h-1 min-w-0">
                             <div
                               class="bg-blue-500 h-1 rounded transition-[width] duration-300"
                               :style="{ width: `${calculateFolderStats(node).progress * 100}%` }"
                             />
                           </div>
-                      <span class="text-[10px] font-mono text-gray-500 w-8 text-right shrink-0">
+                      <span class="text-[10px] font-mono text-slate-500 w-8 text-right shrink-0">
                         {{ (calculateFolderStats(node).progress * 100).toFixed(0) }}%
                       </span>
                     </div>
                   </div>
 
                   <!-- 优先级 -->
-                  <div class="px-3 text-center text-xs text-gray-400" :style="getFlexStyle(filesColumnById, 'priority', false, filesResizeState.isResizing)">
+                  <div class="px-3 text-center text-xs text-slate-400" :style="getFlexStyle(filesColumnById, 'priority', false, filesResizeState.isResizing)">
                     -
                   </div>
                 </div>
@@ -1719,7 +1722,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                         @click="toggleFolder(child.path)"
                         @keydown="handleFolderRowKeydown($event, child.path)"
                         @contextmenu="openFileContextMenu($event, child)"
-                        class="flex items-center py-1.5 hover:bg-gray-50 border-b border-gray-100 cursor-pointer text-sm"
+                        class="flex items-center py-1.5 hover:bg-slate-50 border-b border-slate-100 cursor-pointer text-sm"
                         role="button"
                         tabindex="0"
                         :aria-label="`${expandedFolders.has(child.path) ? '折叠' : '展开'}文件夹 ${child.name}`"
@@ -1733,15 +1736,15 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                             <Icon
                               :name="expandedFolders.has(child.path) ? 'chevron-down' : 'chevron-right'"
                               :size="12"
-                              class="text-gray-400 shrink-0 mr-1"
+                              class="text-slate-400 shrink-0 mr-1"
                             />
                             <Icon name="folder" :size="14" class="text-yellow-500 shrink-0 mr-1.5" />
-                            <span class="truncate text-gray-700 flex-1 min-w-0">{{ child.name }}</span>
+                            <span class="truncate text-slate-700 flex-1 min-w-0">{{ child.name }}</span>
                             <button
                               v-if="canRenameFolder"
                               type="button"
                               @click.stop="handleRenamePath(child)"
-                              class="ml-2 p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 shrink-0"
+                              class="ml-2 p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-700 shrink-0"
                               aria-label="重命名文件夹"
                               title="重命名文件夹"
                               :disabled="mutating"
@@ -1752,7 +1755,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                               v-if="canMoveFolder"
                               type="button"
                               @click.stop="handleMovePath(child)"
-                              class="ml-1 p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 shrink-0"
+                              class="ml-1 p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-700 shrink-0"
                               aria-label="移动文件夹"
                               title="移动文件夹"
                               :disabled="mutating"
@@ -1764,7 +1767,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
 
                         <!-- 大小 -->
                         <div
-                          class="px-3 text-right font-mono text-xs text-gray-500"
+                          class="px-3 text-right font-mono text-xs text-slate-500"
                           :style="getFlexStyle(filesColumnById, 'size', false, filesResizeState.isResizing)"
                         >
                           {{ formatBytes(calculateFolderStats(child).size) }}
@@ -1773,20 +1776,20 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                         <!-- 进度 -->
                         <div class="px-3" :style="getFlexStyle(filesColumnById, 'progress', false, filesResizeState.isResizing)">
                             <div class="flex items-center gap-1.5 justify-end">
-                              <div class="flex-1 bg-gray-200 rounded h-1 min-w-0">
+                              <div class="flex-1 bg-slate-200 rounded h-1 min-w-0">
                                 <div
                                   class="bg-blue-500 h-1 rounded transition-[width] duration-300"
                                   :style="{ width: `${calculateFolderStats(child).progress * 100}%` }"
                                 />
                               </div>
-                            <span class="text-[10px] font-mono text-gray-500 w-8 text-right shrink-0">
+                            <span class="text-[10px] font-mono text-slate-500 w-8 text-right shrink-0">
                               {{ (calculateFolderStats(child).progress * 100).toFixed(0) }}%
                             </span>
                           </div>
                         </div>
 
                         <!-- 优先级 -->
-                        <div class="px-3 text-center text-xs text-gray-400" :style="getFlexStyle(filesColumnById, 'priority', false, filesResizeState.isResizing)">
+                        <div class="px-3 text-center text-xs text-slate-400" :style="getFlexStyle(filesColumnById, 'priority', false, filesResizeState.isResizing)">
                           -
                         </div>
                       </div>
@@ -1797,7 +1800,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                           <!-- 文件 -->
                           <div
                             v-if="grandchild.type === 'file'"
-                            class="flex items-center py-1.5 hover:bg-gray-50 border-b border-gray-100 text-sm"
+                            class="flex items-center py-1.5 hover:bg-slate-50 border-b border-slate-100 text-sm"
                             @contextmenu="openFileContextMenu($event, grandchild)"
                           >
                             <!-- 文件名 -->
@@ -1807,13 +1810,13 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                             >
                               <div class="flex items-center min-w-0 w-full" :style="{ paddingLeft: `${8 + grandchild.level * 16}px` }">
                                 <span class="w-3.5 shrink-0"></span>
-                                <Icon name="file" :size="14" class="text-gray-400 shrink-0 mr-1.5" />
-                                <span class="truncate text-gray-900 flex-1 min-w-0">{{ grandchild.name }}</span>
+                                <Icon name="file" :size="14" class="text-slate-400 shrink-0 mr-1.5" />
+                                <span class="truncate text-slate-900 flex-1 min-w-0">{{ grandchild.name }}</span>
                                 <button
                                   v-if="canRenameFile"
                                   type="button"
                                   @click.stop="handleRenamePath(grandchild)"
-                                  class="ml-2 p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 shrink-0"
+                                  class="ml-2 p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-700 shrink-0"
                                   aria-label="重命名文件"
                                   title="重命名文件"
                                   :disabled="mutating"
@@ -1824,7 +1827,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                                   v-if="canMoveFile"
                                   type="button"
                                   @click.stop="handleMovePath(grandchild)"
-                                  class="ml-1 p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 shrink-0"
+                                  class="ml-1 p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-700 shrink-0"
                                   aria-label="移动文件"
                                   title="移动文件"
                                   :disabled="mutating"
@@ -1836,7 +1839,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
 
                             <!-- 大小 -->
                             <div
-                              class="px-3 text-right font-mono text-xs text-gray-600"
+                              class="px-3 text-right font-mono text-xs text-slate-600"
                               :style="getFlexStyle(filesColumnById, 'size', false, filesResizeState.isResizing)"
                             >
                               {{ formatBytes(grandchild.size!) }}
@@ -1845,13 +1848,13 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                             <!-- 进度 -->
                             <div class="px-3" :style="getFlexStyle(filesColumnById, 'progress', false, filesResizeState.isResizing)">
                               <div class="flex items-center gap-1.5 justify-end">
-                                <div class="flex-1 bg-gray-200 rounded h-1 min-w-0">
+                                <div class="flex-1 bg-slate-200 rounded h-1 min-w-0">
                                   <div
                                     class="bg-blue-500 h-1 rounded transition-[width] duration-300"
                                     :style="{ width: `${grandchild.progress! * 100}%` }"
                                   />
                                 </div>
-                                <span class="text-[10px] font-mono text-gray-500 w-8 text-right shrink-0">
+                                <span class="text-[10px] font-mono text-slate-500 w-8 text-right shrink-0">
                                   {{ (grandchild.progress! * 100).toFixed(0) }}%
                                 </span>
                               </div>
@@ -1867,7 +1870,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                                 @click.stop
                                 @change="handlePriorityChange(grandchild, ($event.target as HTMLSelectElement).value)"
                                 class="w-full rounded bg-transparent px-1 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/10"
-                                :class="priorityMap[grandchild.priority || 'normal']?.class || 'text-gray-600'"
+                                :class="priorityMap[grandchild.priority || 'normal']?.class || 'text-slate-600'"
                                 aria-label="设置文件优先级"
                                 :disabled="mutating"
                               >
@@ -1885,7 +1888,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                     <!-- 文件节点（直接子节点） -->
                     <div
                       v-else
-                      class="flex items-center py-1.5 hover:bg-gray-50 border-b border-gray-100 text-sm"
+                      class="flex items-center py-1.5 hover:bg-slate-50 border-b border-slate-100 text-sm"
                       @contextmenu="openFileContextMenu($event, child)"
                     >
                       <!-- 文件名 -->
@@ -1895,13 +1898,13 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                       >
                         <div class="flex items-center min-w-0 w-full" :style="{ paddingLeft: `${8 + child.level * 16}px` }">
                           <span class="w-3.5 shrink-0"></span>
-                          <Icon name="file" :size="14" class="text-gray-400 shrink-0 mr-1.5" />
-                          <span class="truncate text-gray-900 flex-1 min-w-0">{{ child.name }}</span>
+                          <Icon name="file" :size="14" class="text-slate-400 shrink-0 mr-1.5" />
+                          <span class="truncate text-slate-900 flex-1 min-w-0">{{ child.name }}</span>
                           <button
                             v-if="canRenameFile"
                             type="button"
                             @click.stop="handleRenamePath(child)"
-                            class="ml-2 p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 shrink-0"
+                            class="ml-2 p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-700 shrink-0"
                             aria-label="重命名文件"
                             title="重命名文件"
                             :disabled="mutating"
@@ -1912,7 +1915,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                             v-if="canMoveFile"
                             type="button"
                             @click.stop="handleMovePath(child)"
-                            class="ml-1 p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 shrink-0"
+                            class="ml-1 p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-700 shrink-0"
                             aria-label="移动文件"
                             title="移动文件"
                             :disabled="mutating"
@@ -1924,7 +1927,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
 
                       <!-- 大小 -->
                       <div
-                        class="px-3 text-right font-mono text-xs text-gray-600"
+                        class="px-3 text-right font-mono text-xs text-slate-600"
                         :style="getFlexStyle(filesColumnById, 'size', false, filesResizeState.isResizing)"
                       >
                         {{ formatBytes(child.size!) }}
@@ -1933,13 +1936,13 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                       <!-- 进度 -->
                       <div class="px-3" :style="getFlexStyle(filesColumnById, 'progress', false, filesResizeState.isResizing)">
                         <div class="flex items-center gap-1.5 justify-end">
-                          <div class="flex-1 bg-gray-200 rounded h-1 min-w-0">
+                          <div class="flex-1 bg-slate-200 rounded h-1 min-w-0">
                             <div
                               class="bg-blue-500 h-1 rounded transition-[width] duration-300"
                               :style="{ width: `${child.progress! * 100}%` }"
                             />
                           </div>
-                          <span class="text-[10px] font-mono text-gray-500 w-8 text-right shrink-0">
+                          <span class="text-[10px] font-mono text-slate-500 w-8 text-right shrink-0">
                             {{ (child.progress! * 100).toFixed(0) }}%
                           </span>
                         </div>
@@ -1955,7 +1958,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                           @click.stop
                           @change="handlePriorityChange(child, ($event.target as HTMLSelectElement).value)"
                           class="w-full rounded bg-transparent px-1 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/10"
-                          :class="priorityMap[child.priority || 'normal']?.class || 'text-gray-600'"
+                          :class="priorityMap[child.priority || 'normal']?.class || 'text-slate-600'"
                           aria-label="设置文件优先级"
                           :disabled="mutating"
                         >
@@ -1973,7 +1976,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
               <!-- 顶级文件节点（无文件夹） -->
               <div
                 v-else
-                class="flex items-center py-1.5 hover:bg-gray-50 border-b border-gray-100 text-sm"
+                class="flex items-center py-1.5 hover:bg-slate-50 border-b border-slate-100 text-sm"
                 @contextmenu="openFileContextMenu($event, node)"
               >
                 <!-- 文件名 -->
@@ -1983,13 +1986,13 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                 >
                   <div class="flex items-center min-w-0 w-full" :style="{ paddingLeft: `${8 + node.level * 16}px` }">
                     <span class="w-3.5 shrink-0"></span>
-                    <Icon name="file" :size="14" class="text-gray-400 shrink-0 mr-1.5" />
-                    <span class="truncate text-gray-900 flex-1 min-w-0">{{ node.name }}</span>
+                    <Icon name="file" :size="14" class="text-slate-400 shrink-0 mr-1.5" />
+                    <span class="truncate text-slate-900 flex-1 min-w-0">{{ node.name }}</span>
                     <button
                       v-if="canRenameFile"
                       type="button"
                       @click.stop="handleRenamePath(node)"
-                      class="ml-2 p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 shrink-0"
+                      class="ml-2 p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-700 shrink-0"
                       aria-label="重命名文件"
                       title="重命名文件"
                       :disabled="mutating"
@@ -2000,7 +2003,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                       v-if="canMoveFile"
                       type="button"
                       @click.stop="handleMovePath(node)"
-                      class="ml-1 p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 shrink-0"
+                      class="ml-1 p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-700 shrink-0"
                       aria-label="移动文件"
                       title="移动文件"
                       :disabled="mutating"
@@ -2012,7 +2015,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
 
                 <!-- 大小 -->
                 <div
-                  class="px-3 text-right font-mono text-xs text-gray-600"
+                  class="px-3 text-right font-mono text-xs text-slate-600"
                   :style="getFlexStyle(filesColumnById, 'size', false, filesResizeState.isResizing)"
                 >
                   {{ formatBytes(node.size!) }}
@@ -2021,13 +2024,13 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                 <!-- 进度 -->
                 <div class="px-3" :style="getFlexStyle(filesColumnById, 'progress', false, filesResizeState.isResizing)">
                   <div class="flex items-center gap-1.5 justify-end">
-                    <div class="flex-1 bg-gray-200 rounded h-1 min-w-0">
+                    <div class="flex-1 bg-slate-200 rounded h-1 min-w-0">
                       <div
                         class="bg-blue-500 h-1 rounded transition-[width] duration-300"
                         :style="{ width: `${node.progress! * 100}%` }"
                       />
                     </div>
-                    <span class="text-[10px] font-mono text-gray-500 w-8 text-right shrink-0">
+                    <span class="text-[10px] font-mono text-slate-500 w-8 text-right shrink-0">
                       {{ (node.progress! * 100).toFixed(0) }}%
                     </span>
                   </div>
@@ -2043,7 +2046,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                     @click.stop
                     @change="handlePriorityChange(node, ($event.target as HTMLSelectElement).value)"
                     class="w-full rounded bg-transparent px-1 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/10"
-                    :class="priorityMap[node.priority || 'normal']?.class || 'text-gray-600'"
+                    :class="priorityMap[node.priority || 'normal']?.class || 'text-slate-600'"
                     aria-label="设置文件优先级"
                     :disabled="mutating"
                   >
@@ -2058,7 +2061,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
           </div>
 
           <!-- 底部统计 -->
-          <div class="px-3 py-1 bg-gray-50 border-t border-gray-200 text-xs text-gray-500 shrink-0">
+          <div class="px-3 py-1 bg-slate-50 border-t border-slate-200 text-xs text-slate-500 shrink-0">
             {{ detail.files.length }} 个文件
           </div>
         </div>
@@ -2067,7 +2070,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
         <div v-else-if="activeTab === 'trackers'" class="h-full flex flex-col">
           <div
             v-if="canTrackerManagement"
-            class="flex items-center gap-2 px-3 py-2 border-b border-gray-200 bg-gray-50 shrink-0"
+            class="flex items-center gap-2 px-3 py-2 border-b border-slate-200 bg-slate-50 shrink-0"
           >
             <button
               type="button"
@@ -2099,7 +2102,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
             >
               <Icon name="trash-2" :size="16" />
             </button>
-            <div class="ml-auto text-xs text-gray-500">
+            <div class="ml-auto text-xs text-slate-500">
               已选 {{ selectedTrackerUrls.size }}
             </div>
           </div>
@@ -2119,8 +2122,8 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
               @click="toggleTrackerSelection(tracker.url)"
               @keydown.enter.prevent="toggleTrackerSelection(tracker.url)"
               @keydown.space.prevent="toggleTrackerSelection(tracker.url)"
-              class="flex items-center py-2 border-b border-gray-100 text-sm cursor-pointer"
-              :class="selectedTrackerUrls.has(tracker.url) ? 'bg-blue-50' : 'hover:bg-gray-50'"
+              class="flex items-center py-2 border-b border-slate-100 text-sm cursor-pointer"
+              :class="selectedTrackerUrls.has(tracker.url) ? 'bg-blue-50' : 'hover:bg-slate-50'"
               role="button"
               tabindex="0"
               :aria-pressed="selectedTrackerUrls.has(tracker.url)"
@@ -2128,10 +2131,10 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
             >
               <!-- URL -->
               <div class="min-w-0 px-3" :style="getFlexStyle(trackersColumnById, 'url', false, trackersResizeState.isResizing)">
-                <span class="truncate font-mono text-gray-900 text-xs block">
+                <span class="truncate font-mono text-slate-900 text-xs block">
                   {{ tracker.url }}
                 </span>
-                <span v-if="tracker.msg" class="truncate text-gray-500 text-[10px] block">
+                <span v-if="tracker.msg" class="truncate text-slate-500 text-[10px] block">
                   {{ tracker.msg }}
                 </span>
               </div>
@@ -2140,7 +2143,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
               <div class="px-3 text-center shrink-0" :style="getFlexStyle(trackersColumnById, 'status', false, trackersResizeState.isResizing)">
                 <span
                   class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium"
-                  :class="trackerStatusMap[tracker.status]?.class || 'bg-gray-100 text-gray-600'"
+                  :class="trackerStatusMap[tracker.status]?.class || 'bg-slate-100 text-slate-600'"
                 >
                   <span class="text-[8px]">{{ trackerStatusMap[tracker.status]?.icon || '○' }}</span>
                   <span>{{ trackerStatusMap[tracker.status]?.text || tracker.status }}</span>
@@ -2148,19 +2151,19 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
               </div>
 
               <!-- Peers -->
-              <div class="px-3 text-right font-mono text-xs text-gray-600 shrink-0" :style="getFlexStyle(trackersColumnById, 'peers', false, trackersResizeState.isResizing)">
+              <div class="px-3 text-right font-mono text-xs text-slate-600 shrink-0" :style="getFlexStyle(trackersColumnById, 'peers', false, trackersResizeState.isResizing)">
                 {{ tracker.peers }}
               </div>
 
               <!-- Tier -->
-              <div class="px-3 text-right text-xs text-gray-600 shrink-0" :style="getFlexStyle(trackersColumnById, 'tier', false, trackersResizeState.isResizing)">
+              <div class="px-3 text-right text-xs text-slate-600 shrink-0" :style="getFlexStyle(trackersColumnById, 'tier', false, trackersResizeState.isResizing)">
                 {{ tracker.tier }}
               </div>
             </div>
           </div>
 
           <!-- 底部统计 -->
-          <div class="px-3 py-1 bg-gray-50 border-t border-gray-200 text-xs text-gray-500 shrink-0">
+          <div class="px-3 py-1 bg-slate-50 border-t border-slate-200 text-xs text-slate-500 shrink-0">
             {{ detail.trackers.length }} 个 Tracker
           </div>
         </div>
@@ -2169,7 +2172,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
         <div v-else-if="activeTab === 'peers'" class="h-full flex flex-col">
           <div
             v-if="canPeerManagement"
-            class="flex items-center gap-2 px-3 py-2 border-b border-gray-200 bg-gray-50 shrink-0"
+            class="flex items-center gap-2 px-3 py-2 border-b border-slate-200 bg-slate-50 shrink-0"
           >
             <button
               type="button"
@@ -2191,7 +2194,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
             >
               <Icon name="alert-triangle" :size="16" />
             </button>
-            <div class="ml-auto text-xs text-gray-500">
+            <div class="ml-auto text-xs text-slate-500">
               已选 {{ selectedPeers.size }}
             </div>
           </div>
@@ -2211,8 +2214,8 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
               @click="togglePeerSelection(peer)"
               @keydown.enter.prevent="togglePeerSelection(peer)"
               @keydown.space.prevent="togglePeerSelection(peer)"
-              class="flex items-center py-2 border-b border-gray-100 text-sm cursor-pointer"
-              :class="selectedPeers.has(peerKey(peer)) ? 'bg-blue-50' : 'hover:bg-gray-50'"
+              class="flex items-center py-2 border-b border-slate-100 text-sm cursor-pointer"
+              :class="selectedPeers.has(peerKey(peer)) ? 'bg-blue-50' : 'hover:bg-slate-50'"
               role="button"
               tabindex="0"
               :aria-pressed="selectedPeers.has(peerKey(peer))"
@@ -2220,14 +2223,14 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
             >
               <!-- IP:Port -->
               <div class="px-3 shrink-0" :style="getFlexStyle(peersColumnById, 'address', false, peersResizeState.isResizing)">
-                <span class="font-mono text-gray-900 truncate text-xs block">
+                <span class="font-mono text-slate-900 truncate text-xs block">
                   {{ peer.ip }}:{{ peer.port }}
                 </span>
               </div>
 
               <!-- 客户端 -->
               <div class="min-w-0 px-3" :style="getFlexStyle(peersColumnById, 'client', false, peersResizeState.isResizing)">
-                <span class="truncate text-gray-700 text-xs block">
+                <span class="truncate text-slate-700 text-xs block">
                   {{ peer.client || 'Unknown' }}
                 </span>
               </div>
@@ -2235,13 +2238,13 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
               <!-- 进度 -->
               <div class="px-3 text-right shrink-0" :style="getFlexStyle(peersColumnById, 'progress', false, peersResizeState.isResizing)">
                 <div class="flex items-center justify-end gap-1.5">
-                  <div class="w-10 bg-gray-200 rounded h-1 shrink-0">
+                  <div class="w-10 bg-slate-200 rounded h-1 shrink-0">
                     <div
                       class="bg-blue-500 h-1 rounded transition-[width] duration-300"
                       :style="{ width: `${peer.progress * 100}%` }"
                     />
                   </div>
-                  <span class="text-[10px] font-mono text-gray-600 w-7 text-right shrink-0">
+                  <span class="text-[10px] font-mono text-slate-600 w-7 text-right shrink-0">
                     {{ (peer.progress * 100).toFixed(0) }}%
                   </span>
                 </div>
@@ -2249,14 +2252,14 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
 
               <!-- 下载速度 -->
               <div class="px-3 text-right font-mono text-xs shrink-0" :style="getFlexStyle(peersColumnById, 'dlSpeed', false, peersResizeState.isResizing)">
-                <span :class="peer.dlSpeed > 0 ? 'text-blue-600' : 'text-gray-400'">
+                <span :class="peer.dlSpeed > 0 ? 'text-blue-600' : 'text-slate-400'">
                   {{ formatSpeed(peer.dlSpeed) }}
                 </span>
               </div>
 
               <!-- 上传速度 -->
               <div class="px-3 text-right font-mono text-xs shrink-0" :style="getFlexStyle(peersColumnById, 'upSpeed', false, peersResizeState.isResizing)">
-                <span :class="peer.upSpeed > 0 ? 'text-cyan-600' : 'text-gray-400'">
+                <span :class="peer.upSpeed > 0 ? 'text-cyan-600' : 'text-slate-400'">
                   {{ formatSpeed(peer.upSpeed) }}
                 </span>
               </div>
@@ -2264,7 +2267,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
           </div>
 
           <!-- 底部统计 -->
-          <div class="px-3 py-1 bg-gray-50 border-t border-gray-200 text-xs text-gray-500 shrink-0">
+          <div class="px-3 py-1 bg-slate-50 border-t border-slate-200 text-xs text-slate-500 shrink-0">
             {{ detail.peers.length }} 个连接
           </div>
         </div>
@@ -2297,24 +2300,29 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
         >
           <div
             v-if="showLimitDialog"
-            class="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden"
+            ref="limitDialogPanelRef"
+            tabindex="-1"
+            role="dialog"
+            aria-modal="true"
+            aria-label="单种子限速"
+            class="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden outline-none"
             @click.stop
           >
-            <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-              <h2 class="text-lg font-semibold text-gray-900">单种子限速</h2>
+            <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+              <h2 class="text-lg font-semibold text-slate-900">单种子限速</h2>
               <button
                 type="button"
                 @click="showLimitDialog = false"
-                class="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                class="p-1 hover:bg-slate-100 rounded-lg transition-colors"
                 aria-label="关闭单种子限速对话框"
               >
-                <Icon name="x" :size="20" class="text-gray-500" />
+                <Icon name="x" :size="20" class="text-slate-500" />
               </button>
             </div>
 
             <div class="p-6 space-y-4">
               <div class="space-y-2">
-                <label class="block text-sm font-medium text-gray-700">
+                <label class="block text-sm font-medium text-slate-700">
                   下载限速（{{ speedUnitLabel }}）
                 </label>
                 <input
@@ -2326,7 +2334,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
               </div>
 
               <div class="space-y-2">
-                <label class="block text-sm font-medium text-gray-700">
+                <label class="block text-sm font-medium text-slate-700">
                   上传限速（{{ speedUnitLabel }}）
                 </label>
                 <input
@@ -2337,7 +2345,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                 />
               </div>
 
-              <p class="text-xs text-gray-500">
+              <p class="text-xs text-slate-500">
                 提示：Transmission 的速度单位可能是 kB/s（1000），qBittorrent 按 KiB/s（1024）处理。
               </p>
 
@@ -2374,7 +2382,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
     >
       <div
         v-if="fileContextMenuState.show"
-        class="fixed z-50 bg-white rounded-lg shadow-xl border border-gray-200 py-1 min-w-[180px] max-h-[60vh] overflow-y-auto"
+        class="fixed z-50 bg-white rounded-lg shadow-xl border border-slate-200 py-1 min-w-[180px] max-h-[60vh] overflow-y-auto"
         :style="{
           left: `${fileMenuPosition.left}px`,
           top: `${fileMenuPosition.top}px`
@@ -2387,7 +2395,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
           type="button"
           @click="item.action()"
           :class="`w-full px-4 py-2 text-left text-sm flex items-center gap-3 ${
-            item.disabled ? 'opacity-50 cursor-not-allowed' : 'text-gray-700 hover:bg-gray-50 cursor-pointer'
+            item.disabled ? 'opacity-50 cursor-not-allowed' : 'text-slate-700 hover:bg-slate-50 cursor-pointer'
           }`"
           :disabled="item.disabled"
         >

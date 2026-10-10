@@ -14,6 +14,7 @@ import type {
 import Icon from '@/components/Icon.vue'
 import SafeText from '@/components/SafeText.vue'
 import { useUiOverlay } from '@/composables/useUiOverlay'
+import { useModalKeyboard } from '@/composables/useModalKeyboard'
 
 interface Props {
   open: boolean
@@ -29,6 +30,8 @@ const emit = defineEmits<Emits>()
 const backendStore = useBackendStore()
 const adapter = computed(() => backendStore.adapter)
 const overlay = useUiOverlay()
+const panelRef = ref<HTMLElement | null>(null)
+useModalKeyboard(panelRef, () => emit('close'), computed(() => props.open))
 const capabilities = computed<BackendCapabilities>(() => backendStore.capabilities)
 
 type TabId = 'logs' | 'rss' | 'search'
@@ -236,7 +239,7 @@ async function rssSetRule() {
   try {
     def = JSON.parse(rssRuleDefJson.value || '{}') as RssRuleDefinition
   } catch (err) {
-    alert(err instanceof Error ? err.message : 'ruleDef 不是合法 JSON')
+    overlay.notify({ message: err instanceof Error ? err.message : 'ruleDef 不是合法 JSON', tone: 'danger' })
     return
   }
   await run(
@@ -250,9 +253,12 @@ async function rssRenameRule() {
   if (!adapter.value?.rssRenameRule) return
   const name = rssRuleName.value.trim()
   if (!name) return
-  const next = prompt('请输入新的 ruleName：', name)
-  if (next === null) return
-  const trimmed = next.trim()
+  const values = await overlay.openForm({
+    title: '重命名规则',
+    fields: [{ key: 'name', label: '新的 ruleName', defaultValue: name, required: true }],
+  })
+  if (!values) return
+  const trimmed = (values.name ?? '').trim()
   if (!trimmed || trimmed === name) return
   await run(
     () => adapter.value!.rssRenameRule!(name, trimmed),
@@ -389,9 +395,12 @@ async function searchEnablePlugin(pluginName: string, enable: boolean) {
 
 async function searchInstallPlugin() {
   if (!adapter.value?.searchInstallPlugin) return
-  const src = prompt('请输入插件源（URL 或本地路径，多条可用换行分隔）：', '')
-  if (src === null) return
-  const sources = src
+  const values = await overlay.openForm({
+    title: '安装搜索插件',
+    fields: [{ key: 'sources', label: '插件源（URL 或本地路径，多条可用换行分隔）', multiline: true, required: true }],
+  })
+  if (!values) return
+  const sources = (values.sources ?? '')
     .split(/[\n,，]+/g)
     .map(s => s.trim())
     .filter(Boolean)
@@ -405,9 +414,12 @@ async function searchInstallPlugin() {
 
 async function searchUninstallPlugin() {
   if (!adapter.value?.searchUninstallPlugin) return
-  const name = prompt('请输入要卸载的插件 name（多条可用换行分隔）：', '')
-  if (name === null) return
-  const names = name
+  const values = await overlay.openForm({
+    title: '卸载搜索插件',
+    fields: [{ key: 'names', label: '插件 name（多条可用换行分隔）', multiline: true, required: true }],
+  })
+  if (!values) return
+  const names = (values.names ?? '')
     .split(/[\n,，]+/g)
     .map(s => s.trim())
     .filter(Boolean)
@@ -445,21 +457,26 @@ async function searchUninstallPlugin() {
         >
           <div
             v-if="open"
-            class="bg-white rounded-xl shadow-xl w-full max-w-5xl overflow-hidden"
+            ref="panelRef"
+            tabindex="-1"
+            role="dialog"
+            aria-modal="true"
+            aria-label="工具"
+            class="bg-white rounded-xl shadow-xl w-full max-w-5xl overflow-hidden outline-none"
             @click.stop
           >
-            <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-              <h2 class="text-lg font-semibold text-gray-900">工具</h2>
+            <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+              <h2 class="text-lg font-semibold text-slate-900">工具</h2>
               <button
                 @click="emit('close')"
-                class="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                class="p-1 hover:bg-slate-100 rounded-lg transition-colors"
               >
-                <Icon name="x" :size="20" class="text-gray-500" />
+                <Icon name="x" :size="20" class="text-slate-500" />
               </button>
             </div>
 
             <div class="px-6 pt-4">
-              <nav class="flex gap-1 p-1 bg-gray-100 rounded-lg overflow-x-auto">
+              <nav class="flex gap-1 p-1 bg-slate-100 rounded-lg overflow-x-auto">
                 <button
                   v-for="tab in tabs"
                   :key="tab.id"
@@ -467,8 +484,8 @@ async function searchUninstallPlugin() {
                   :class="[
                     'flex items-center gap-2 px-3 py-1.5 rounded text-sm font-medium transition-colors whitespace-nowrap',
                     activeTab === tab.id
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      ? 'bg-white text-slate-900 shadow-sm'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                   ]"
                 >
                   <Icon :name="tab.icon" :size="14" />
@@ -482,7 +499,7 @@ async function searchUninstallPlugin() {
                 {{ error }}
               </div>
 
-              <div v-if="loading" class="text-sm text-gray-500 flex items-center gap-2">
+              <div v-if="loading" class="text-sm text-slate-500 flex items-center gap-2">
                 <Icon name="loader-2" :size="16" class="animate-spin" />
                 <span>执行中...</span>
               </div>
@@ -505,7 +522,7 @@ async function searchUninstallPlugin() {
                 </div>
 
                 <div v-if="logTab === 'app'" class="space-y-3">
-                  <div class="flex flex-wrap items-center gap-4 text-sm text-gray-600">
+                  <div class="flex flex-wrap items-center gap-4 text-sm text-slate-600">
                     <label class="inline-flex items-center gap-2">
                       <input v-model="logFilters.normal" type="checkbox" class="h-4 w-4" />
                       normal
@@ -525,21 +542,21 @@ async function searchUninstallPlugin() {
                     <button class="btn ml-auto" @click="loadAppLog" :disabled="loading">应用过滤</button>
                   </div>
 
-                  <div class="border border-gray-200 rounded-lg overflow-hidden">
+                  <div class="border border-slate-200 rounded-lg overflow-hidden">
                     <div class="max-h-[55vh] overflow-auto">
                       <div
                         v-for="entry in appLogs"
                         :key="entry.id"
-                        class="px-4 py-2 border-b border-gray-100 text-sm"
+                        class="px-4 py-2 border-b border-slate-100 text-sm"
                       >
                         <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-                          <span class="font-mono text-xs text-gray-500">#{{ entry.id }}</span>
-                          <span class="font-mono text-xs text-gray-500">{{ formatTimestamp(entry.timestamp) }}</span>
-                          <span class="text-xs font-medium text-gray-700">{{ entry.level }}</span>
+                          <span class="font-mono text-xs text-slate-500">#{{ entry.id }}</span>
+                          <span class="font-mono text-xs text-slate-500">{{ formatTimestamp(entry.timestamp) }}</span>
+                          <span class="text-xs font-medium text-slate-700">{{ entry.level }}</span>
                         </div>
-                        <SafeText as="div" class="mt-1 text-gray-800 whitespace-pre-wrap break-words" :text="entry.message" />
+                        <SafeText as="div" class="mt-1 text-slate-800 whitespace-pre-wrap break-words" :text="entry.message" />
                       </div>
-                      <div v-if="appLogs.length === 0" class="px-4 py-8 text-center text-sm text-gray-500">
+                      <div v-if="appLogs.length === 0" class="px-4 py-8 text-center text-sm text-slate-500">
                         暂无日志
                       </div>
                     </div>
@@ -547,24 +564,24 @@ async function searchUninstallPlugin() {
                 </div>
 
                 <div v-else class="space-y-3">
-                  <div class="border border-gray-200 rounded-lg overflow-hidden">
+                  <div class="border border-slate-200 rounded-lg overflow-hidden">
                     <div class="max-h-[55vh] overflow-auto">
                       <div
                         v-for="entry in peerLogs"
                         :key="entry.id"
-                        class="px-4 py-2 border-b border-gray-100 text-sm"
+                        class="px-4 py-2 border-b border-slate-100 text-sm"
                       >
                         <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-                          <span class="font-mono text-xs text-gray-500">#{{ entry.id }}</span>
-                          <span class="font-mono text-xs text-gray-500">{{ formatTimestamp(entry.timestamp) }}</span>
-                          <span class="font-mono text-xs text-gray-700">{{ entry.ip }}</span>
-                          <span class="text-xs font-medium" :class="entry.blocked ? 'text-red-700' : 'text-gray-600'">
+                          <span class="font-mono text-xs text-slate-500">#{{ entry.id }}</span>
+                          <span class="font-mono text-xs text-slate-500">{{ formatTimestamp(entry.timestamp) }}</span>
+                          <span class="font-mono text-xs text-slate-700">{{ entry.ip }}</span>
+                          <span class="text-xs font-medium" :class="entry.blocked ? 'text-red-700' : 'text-slate-600'">
                             {{ entry.blocked ? 'blocked' : 'ok' }}
                           </span>
                         </div>
-                        <SafeText as="div" class="mt-1 text-gray-800 whitespace-pre-wrap break-words" :text="entry.reason" />
+                        <SafeText as="div" class="mt-1 text-slate-800 whitespace-pre-wrap break-words" :text="entry.reason" />
                       </div>
-                      <div v-if="peerLogs.length === 0" class="px-4 py-8 text-center text-sm text-gray-500">
+                      <div v-if="peerLogs.length === 0" class="px-4 py-8 text-center text-sm text-slate-500">
                         暂无 Peer 日志
                       </div>
                     </div>
@@ -575,7 +592,7 @@ async function searchUninstallPlugin() {
               <!-- RSS -->
               <div v-else-if="activeTab === 'rss'" class="space-y-4">
                 <div class="flex flex-wrap items-center gap-2">
-                  <label class="inline-flex items-center gap-2 text-sm text-gray-600">
+                  <label class="inline-flex items-center gap-2 text-sm text-slate-600">
                     <input v-model="rssWithData" type="checkbox" class="h-4 w-4" />
                     withData
                   </label>
@@ -586,41 +603,41 @@ async function searchUninstallPlugin() {
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   <div class="space-y-4">
                     <div class="card p-4 space-y-3">
-                      <h3 class="text-sm font-semibold text-gray-900">订阅源管理</h3>
+                      <h3 class="text-sm font-semibold text-slate-900">订阅源管理</h3>
                       <div class="space-y-2">
-                        <label class="block text-xs font-medium text-gray-600">addFolder path（使用 \\ 分隔）</label>
+                        <label class="block text-xs font-medium text-slate-600">addFolder path（使用 \\ 分隔）</label>
                         <input v-model="rssAddFolderPath" class="input font-mono" placeholder="The Pirate Bay\\Top100" />
                         <button class="btn" @click="rssAddFolder" :disabled="loading">添加文件夹</button>
                       </div>
                       <div class="space-y-2">
-                        <label class="block text-xs font-medium text-gray-600">addFeed url</label>
+                        <label class="block text-xs font-medium text-slate-600">addFeed url</label>
                         <input v-model="rssAddFeedUrl" class="input font-mono" placeholder="https://example.com/rss" />
-                        <label class="block text-xs font-medium text-gray-600">addFeed path（可选）</label>
+                        <label class="block text-xs font-medium text-slate-600">addFeed path（可选）</label>
                         <input v-model="rssAddFeedPath" class="input font-mono" placeholder="The Pirate Bay\\Top100\\Video" />
                         <button class="btn" @click="rssAddFeed" :disabled="loading">添加 Feed</button>
                       </div>
                       <div class="space-y-2">
-                        <label class="block text-xs font-medium text-gray-600">itemPath（remove/move/refresh/markAsRead）</label>
+                        <label class="block text-xs font-medium text-slate-600">itemPath（remove/move/refresh/markAsRead）</label>
                         <input v-model="rssItemPath" class="input font-mono" placeholder="The Pirate Bay\\Top100\\Video" />
                         <div class="flex flex-wrap gap-2">
                           <button class="btn" @click="rssRefreshItem" :disabled="loading">刷新 item</button>
                           <button class="btn btn-destructive" @click="rssRemoveItem" :disabled="loading">移除 item</button>
                         </div>
-                        <label class="block text-xs font-medium text-gray-600">destPath（moveItem）</label>
+                        <label class="block text-xs font-medium text-slate-600">destPath（moveItem）</label>
                         <input v-model="rssDestPath" class="input font-mono" placeholder="The Pirate Bay\\Top100" />
                         <button class="btn" @click="rssMoveItem" :disabled="loading">移动/重命名</button>
-                        <label class="block text-xs font-medium text-gray-600">articleId（可选：markAsRead）</label>
+                        <label class="block text-xs font-medium text-slate-600">articleId（可选：markAsRead）</label>
                         <input v-model="rssMarkArticleId" class="input font-mono" placeholder="留空表示整 Feed 已读" />
                         <button class="btn" @click="rssMarkAsRead" :disabled="loading">标记已读</button>
                       </div>
                     </div>
 
                     <div class="card p-4 space-y-3">
-                      <h3 class="text-sm font-semibold text-gray-900">规则管理</h3>
+                      <h3 class="text-sm font-semibold text-slate-900">规则管理</h3>
                       <div class="space-y-2">
-                        <label class="block text-xs font-medium text-gray-600">ruleName</label>
+                        <label class="block text-xs font-medium text-slate-600">ruleName</label>
                         <input v-model="rssRuleName" class="input font-mono" placeholder="Punisher" />
-                        <label class="block text-xs font-medium text-gray-600">ruleDef（JSON）</label>
+                        <label class="block text-xs font-medium text-slate-600">ruleDef（JSON）</label>
                         <textarea v-model="rssRuleDefJson" class="input font-mono h-24 resize-none" />
                         <div class="flex flex-wrap gap-2">
                           <button class="btn btn-primary" @click="rssSetRule" :disabled="loading">保存 rule</button>
@@ -634,16 +651,16 @@ async function searchUninstallPlugin() {
 
                   <div class="space-y-4">
                     <div class="card p-4 space-y-2">
-                      <h3 class="text-sm font-semibold text-gray-900">items</h3>
-                      <pre class="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs overflow-auto max-h-64">{{ pretty(rssItems) }}</pre>
+                      <h3 class="text-sm font-semibold text-slate-900">items</h3>
+                      <pre class="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs overflow-auto max-h-64">{{ pretty(rssItems) }}</pre>
                     </div>
                     <div class="card p-4 space-y-2">
-                      <h3 class="text-sm font-semibold text-gray-900">rules</h3>
-                      <pre class="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs overflow-auto max-h-64">{{ pretty(rssRules) }}</pre>
+                      <h3 class="text-sm font-semibold text-slate-900">rules</h3>
+                      <pre class="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs overflow-auto max-h-64">{{ pretty(rssRules) }}</pre>
                     </div>
                     <div class="card p-4 space-y-2">
-                      <h3 class="text-sm font-semibold text-gray-900">matchingArticles</h3>
-                      <pre class="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs overflow-auto max-h-64">{{ pretty(rssMatching) }}</pre>
+                      <h3 class="text-sm font-semibold text-slate-900">matchingArticles</h3>
+                      <pre class="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs overflow-auto max-h-64">{{ pretty(rssMatching) }}</pre>
                     </div>
                   </div>
                 </div>
@@ -654,22 +671,22 @@ async function searchUninstallPlugin() {
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   <div class="space-y-4">
                     <div class="card p-4 space-y-3">
-                      <h3 class="text-sm font-semibold text-gray-900">启动搜索</h3>
+                      <h3 class="text-sm font-semibold text-slate-900">启动搜索</h3>
                       <div class="space-y-2">
-                        <label class="block text-xs font-medium text-gray-600">pattern</label>
+                        <label class="block text-xs font-medium text-slate-600">pattern</label>
                         <input v-model="searchPattern" class="input font-mono" placeholder="Ubuntu 24.04" />
-                        <label class="block text-xs font-medium text-gray-600">plugins（支持 | 分隔，all/enabled）</label>
+                        <label class="block text-xs font-medium text-slate-600">plugins（支持 | 分隔，all/enabled）</label>
                         <input v-model="searchPluginsInput" class="input font-mono" placeholder="enabled" />
-                        <label class="block text-xs font-medium text-gray-600">category（all 或具体分类）</label>
+                        <label class="block text-xs font-medium text-slate-600">category（all 或具体分类）</label>
                         <input v-model="searchCategoryInput" class="input font-mono" placeholder="all" />
                         <button class="btn btn-primary" @click="searchStart" :disabled="loading || !searchPattern.trim()">开始</button>
                       </div>
                     </div>
 
                     <div class="card p-4 space-y-3">
-                      <h3 class="text-sm font-semibold text-gray-900">任务与结果</h3>
+                      <h3 class="text-sm font-semibold text-slate-900">任务与结果</h3>
                       <div class="space-y-2">
-                        <label class="block text-xs font-medium text-gray-600">job id</label>
+                        <label class="block text-xs font-medium text-slate-600">job id</label>
                         <input v-model="searchJobId" class="input font-mono" placeholder="例如 12345" />
                         <div class="flex flex-wrap gap-2">
                           <button class="btn" @click="searchGetStatus" :disabled="loading">status</button>
@@ -678,11 +695,11 @@ async function searchUninstallPlugin() {
                         </div>
                         <div class="grid grid-cols-2 gap-2">
                           <div>
-                            <label class="block text-xs font-medium text-gray-600">offset</label>
+                            <label class="block text-xs font-medium text-slate-600">offset</label>
                             <input v-model.number="searchOffset" type="number" class="input font-mono" min="0" />
                           </div>
                           <div>
-                            <label class="block text-xs font-medium text-gray-600">limit</label>
+                            <label class="block text-xs font-medium text-slate-600">limit</label>
                             <input v-model.number="searchLimit" type="number" class="input font-mono" min="1" />
                           </div>
                         </div>
@@ -691,14 +708,14 @@ async function searchUninstallPlugin() {
                     </div>
 
                     <div class="card p-4 space-y-3">
-                      <h3 class="text-sm font-semibold text-gray-900">插件管理</h3>
+                      <h3 class="text-sm font-semibold text-slate-900">插件管理</h3>
                       <div class="flex flex-wrap gap-2">
                         <button class="btn" @click="searchLoadPlugins" :disabled="loading">plugins</button>
                         <button class="btn" @click="searchUpdatePlugins" :disabled="loading">update</button>
                         <button class="btn" @click="searchInstallPlugin" :disabled="loading">install</button>
                         <button class="btn btn-destructive" @click="searchUninstallPlugin" :disabled="loading">uninstall</button>
                       </div>
-                      <div v-if="searchPlugins.length > 0" class="text-xs text-gray-500">
+                      <div v-if="searchPlugins.length > 0" class="text-xs text-slate-500">
                         点击 enabled 直接切换（逐个调用 enablePlugin）
                       </div>
                     </div>
@@ -706,29 +723,29 @@ async function searchUninstallPlugin() {
 
                   <div class="space-y-4">
                     <div class="card p-4 space-y-2">
-                      <h3 class="text-sm font-semibold text-gray-900">status</h3>
-                      <pre class="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs overflow-auto max-h-48">{{ pretty(searchStatus) }}</pre>
+                      <h3 class="text-sm font-semibold text-slate-900">status</h3>
+                      <pre class="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs overflow-auto max-h-48">{{ pretty(searchStatus) }}</pre>
                     </div>
                     <div class="card p-4 space-y-2">
-                      <h3 class="text-sm font-semibold text-gray-900">results</h3>
-                      <pre class="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs overflow-auto max-h-64">{{ pretty(searchResults) }}</pre>
-                      <div v-if="searchResults?.results?.length" class="text-xs text-gray-500">
+                      <h3 class="text-sm font-semibold text-slate-900">results</h3>
+                      <pre class="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs overflow-auto max-h-64">{{ pretty(searchResults) }}</pre>
+                      <div v-if="searchResults?.results?.length" class="text-xs text-slate-500">
                         当前页：{{ searchResults.results.length }} 条，total: {{ searchResults.total }}
                       </div>
                     </div>
                     <div class="card p-4 space-y-2">
-                      <h3 class="text-sm font-semibold text-gray-900">plugins</h3>
-                      <div class="max-h-64 overflow-auto border border-gray-200 rounded-lg">
+                      <h3 class="text-sm font-semibold text-slate-900">plugins</h3>
+                      <div class="max-h-64 overflow-auto border border-slate-200 rounded-lg">
                         <div
                           v-for="p in searchPlugins"
                           :key="p.name"
-                          class="px-4 py-2 border-b border-gray-100 flex items-center justify-between gap-4"
+                          class="px-4 py-2 border-b border-slate-100 flex items-center justify-between gap-4"
                         >
                           <div class="min-w-0">
-                            <div class="text-sm font-medium text-gray-900 truncate">{{ p.fullName || p.name }}</div>
-                            <div class="text-xs text-gray-500 font-mono truncate">{{ p.name }} · v{{ p.version }}</div>
+                            <div class="text-sm font-medium text-slate-900 truncate">{{ p.fullName || p.name }}</div>
+                            <div class="text-xs text-slate-500 font-mono truncate">{{ p.name }} · v{{ p.version }}</div>
                           </div>
-                          <label class="inline-flex items-center gap-2 text-sm text-gray-600 shrink-0">
+                          <label class="inline-flex items-center gap-2 text-sm text-slate-600 shrink-0">
                             <input
                               :checked="p.enabled"
                               type="checkbox"
@@ -738,7 +755,7 @@ async function searchUninstallPlugin() {
                             enabled
                           </label>
                         </div>
-                        <div v-if="searchPlugins.length === 0" class="px-4 py-8 text-center text-sm text-gray-500">
+                        <div v-if="searchPlugins.length === 0" class="px-4 py-8 text-center text-sm text-slate-500">
                           暂无插件
                         </div>
                       </div>
@@ -747,7 +764,7 @@ async function searchUninstallPlugin() {
                 </div>
               </div>
 
-              <div v-else class="text-sm text-gray-500">
+              <div v-else class="text-sm text-slate-500">
                 当前后端不支持此功能
               </div>
             </div>
