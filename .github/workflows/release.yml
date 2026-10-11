@@ -111,6 +111,9 @@ jobs:
           cp -R "../artifacts/publish/releases/${VERSION}" "releases/${VERSION}"
 
           cp "../artifacts/publish/latest.json" "./latest.json"
+          cp "../artifacts/publish/manifest.json" "./manifest.json"
+          cp "../artifacts/publish/loader.html" "./loader.html"
+          cp "../artifacts/publish/loader.html" "./index.html"
 
           touch .nojekyll
 
