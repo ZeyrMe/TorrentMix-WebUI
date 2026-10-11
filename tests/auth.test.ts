@@ -194,8 +194,6 @@ test('auth: checkSession restores Transmission credentials without generic probi
   const auth = useAuthStore()
   const backend = useBackendStore()
 
-  let genericCreateCalls = 0
-  let genericRebootCalls = 0
   let transCreateCalls = 0
   let clearCalls = 0
 
@@ -206,20 +204,12 @@ test('auth: checkSession restores Transmission credentials without generic probi
   const transVersion = { type: 'trans', version: '4.0.0', major: 4, minor: 0, patch: 0, isUnknown: false }
 
   const deps = {
+    detectBackendTypeOnly: async () => 'trans' as const,
     restoreTransSessionAuth: () => true,
-    hasConfiguredTransUrl: () => false,
     clearTransSessionAuth: () => { clearCalls++ },
     createTransAdapterWithAuth: async () => {
       transCreateCalls++
       return { adapter: transAdapter as any, version: transVersion as any }
-    },
-    createAdapter: async () => {
-      genericCreateCalls++
-      throw new Error('generic create should not be called')
-    },
-    rebootAdapterWithAuth: async () => {
-      genericRebootCalls++
-      throw new Error('generic reboot should not be called')
     },
   }
 
@@ -229,33 +219,28 @@ test('auth: checkSession restores Transmission credentials without generic probi
   assert.equal(auth.isAuthenticated, true)
   assert.equal(backend.backendType, 'trans')
   assert.equal(transCreateCalls, 1)
-  assert.equal(genericCreateCalls, 0)
-  assert.equal(genericRebootCalls, 0)
   assert.equal(clearCalls, 0)
 })
 
-test('auth: checkSession returns false for explicit VITE_TR_URL without stored credentials', async () => {
+test('auth: selected Transmission without stored credentials performs no backend request', async () => {
   setActivePinia(createPinia())
 
   const auth = useAuthStore()
 
-  let genericCreateCalls = 0
   let transCreateCalls = 0
+  let qbitCreateCalls = 0
 
   const deps = {
+    detectBackendTypeOnly: async () => 'trans' as const,
     restoreTransSessionAuth: () => false,
-    hasConfiguredTransUrl: () => true,
     clearTransSessionAuth: () => {},
     createTransAdapterWithAuth: async () => {
       transCreateCalls++
       throw new Error('trans create should not be called')
     },
-    createAdapter: async () => {
-      genericCreateCalls++
-      throw new Error('generic create should not be called')
-    },
-    rebootAdapterWithAuth: async () => {
-      throw new Error('generic reboot should not be called')
+    createAdapterByType: async () => {
+      qbitCreateCalls++
+      throw new Error('qBittorrent adapter should not be created')
     },
   }
 
@@ -263,11 +248,109 @@ test('auth: checkSession returns false for explicit VITE_TR_URL without stored c
 
   assert.equal(ok, false)
   assert.equal(auth.isChecking, false)
-  assert.equal(genericCreateCalls, 0)
+  assert.equal(qbitCreateCalls, 0)
   assert.equal(transCreateCalls, 0)
 })
 
-test('auth: checkSession restores session and falls back to temp adapter when rebootAdapterWithAuth fails', async () => {
+test('auth: selected qBittorrent never reads Transmission credentials or creates a Transmission adapter', async () => {
+  setActivePinia(createPinia())
+
+  const auth = useAuthStore()
+  const backend = useBackendStore()
+  let transRestoreCalls = 0
+  let transCreateCalls = 0
+
+  const qbitAdapter = { checkSession: async () => true }
+  const qbitVersion = { type: 'qbit', version: '5.1.0', major: 5, minor: 1, patch: 0, isUnknown: false }
+  const deps = {
+    detectBackendTypeOnly: async () => 'qbit' as const,
+    restoreTransSessionAuth: () => {
+      transRestoreCalls++
+      return true
+    },
+    createTransAdapterWithAuth: async () => {
+      transCreateCalls++
+      throw new Error('Transmission adapter should not be created')
+    },
+    createAdapterByType: async (type: string) => {
+      assert.equal(type, 'qbit')
+      return qbitAdapter as any
+    },
+    createQbitAdapterWithAuth: async () => ({ adapter: qbitAdapter as any, version: qbitVersion as any }),
+  }
+
+  const ok = await auth.checkSession(deps as any)
+
+  assert.equal(ok, true)
+  assert.equal(auth.isAuthenticated, true)
+  assert.equal(backend.backendType, 'qbit')
+  assert.equal(transRestoreCalls, 0)
+  assert.equal(transCreateCalls, 0)
+})
+
+test('auth: insecure credential storage explicitly persists Transmission Basic Auth in sessionStorage', async () => {
+  const storage = createFakeStorage()
+  const restoreWindow = installSessionStorage(storage)
+  const originalAuth = transClient.defaults.auth
+  const previousMode = process.env.VITE_SECURE_CREDENTIAL_STORAGE
+  const cryptoDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto')
+
+  try {
+    process.env.VITE_SECURE_CREDENTIAL_STORAGE = 'false'
+    clearTransSessionAuth()
+
+    assert.equal(await saveTransSessionAuth('admin', 'pass'), 'insecure-session')
+    const raw = storage.getItem('torrentmix:transmission:session-auth')
+    assert.ok(raw)
+    assert.equal(JSON.parse(raw).mode, 'insecure-session')
+
+    transClient.defaults.auth = undefined
+    Object.defineProperty(globalThis, 'crypto', { configurable: true, value: {} })
+    assert.equal(await restoreTransSessionAuth(), true)
+    assert.deepEqual(transClient.defaults.auth, { username: 'admin', password: 'pass' })
+  } finally {
+    clearTransSessionAuth()
+    transClient.defaults.auth = originalAuth
+    if (previousMode === undefined) delete process.env.VITE_SECURE_CREDENTIAL_STORAGE
+    else process.env.VITE_SECURE_CREDENTIAL_STORAGE = previousMode
+    if (cryptoDescriptor) Object.defineProperty(globalThis, 'crypto', cryptoDescriptor)
+    else delete (globalThis as any).crypto
+    restoreWindow()
+  }
+})
+
+test('auth: anonymous Transmission login stores a refresh marker without credentials', async () => {
+  const storage = createFakeStorage()
+  const restoreWindow = installSessionStorage(storage)
+  const originalAuth = transClient.defaults.auth
+  const cryptoDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto')
+
+  try {
+    clearTransSessionAuth()
+
+    assert.equal(await saveTransSessionAuth('', ''), 'anonymous')
+    const raw = storage.getItem('torrentmix:transmission:session-auth')
+    assert.ok(raw)
+    assert.deepEqual(JSON.parse(raw), {
+      schema: 2,
+      mode: 'anonymous',
+      baseURL: '/transmission/rpc',
+    })
+
+    transClient.defaults.auth = undefined
+    Object.defineProperty(globalThis, 'crypto', { configurable: true, value: {} })
+    assert.equal(await restoreTransSessionAuth(), true)
+    assert.equal(transClient.defaults.auth, undefined)
+  } finally {
+    clearTransSessionAuth()
+    transClient.defaults.auth = originalAuth
+    if (cryptoDescriptor) Object.defineProperty(globalThis, 'crypto', cryptoDescriptor)
+    else delete (globalThis as any).crypto
+    restoreWindow()
+  }
+})
+
+test('auth: qBittorrent restore falls back to conservative adapter when version detection fails', async () => {
   setActivePinia(createPinia())
 
   const auth = useAuthStore()
@@ -275,11 +358,10 @@ test('auth: checkSession restores session and falls back to temp adapter when re
 
   const tempCheckSession = async () => true
   const tempAdapter = { checkSession: tempCheckSession }
-  const tempVersion = { type: 'qbit', version: 'unknown', major: 4, minor: 0, patch: 0, isUnknown: true }
-
   const deps = {
-    createAdapter: async () => ({ adapter: tempAdapter as any, version: tempVersion as any }),
-    rebootAdapterWithAuth: async () => { throw new Error('network wobble') }
+    detectBackendTypeOnly: async () => 'qbit' as const,
+    createAdapterByType: async () => tempAdapter as any,
+    createQbitAdapterWithAuth: async () => { throw new Error('network wobble') },
   }
 
   const originalWarn = console.warn
@@ -298,7 +380,7 @@ test('auth: checkSession restores session and falls back to temp adapter when re
   }
 })
 
-test('auth: checkSession keeps existing adapter when session is valid but rebootAdapterWithAuth fails', async () => {
+test('auth: checkSession keeps existing qBittorrent adapter when version restore fails', async () => {
   setActivePinia(createPinia())
 
   const auth = useAuthStore()
@@ -310,8 +392,7 @@ test('auth: checkSession keeps existing adapter when session is valid but reboot
   backend.setAdapter(existingAdapter as any, unknownVersion as any)
 
   const deps = {
-    createAdapter: async () => { throw new Error('not used') },
-    rebootAdapterWithAuth: async () => { throw new Error('network wobble') }
+    createQbitAdapterWithAuth: async () => { throw new Error('network wobble') },
   }
 
   const originalWarn = console.warn

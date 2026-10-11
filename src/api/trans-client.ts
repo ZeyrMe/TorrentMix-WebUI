@@ -6,9 +6,8 @@ import axios from 'axios'
  * 特殊处理：
  * - 自动处理 409 Conflict，提取 X-Transmission-Session-Id 并重试（单请求最多重试 2 次，防止死循环）
  * - Session ID 存在 axios instance 上（当前导出为单例）
- * - Basic Auth 凭证仅以 AES-GCM 密文写入 sessionStorage（供刷新恢复），明文只存在于内存：
- *   密钥优先存为 IndexedDB 中不可导出的 CryptoKey；无 IndexedDB 的环境（如 Node 测试）
- *   降级为密钥字节与密文同存 sessionStorage（仍避免明文落盘格式）。
+ * - 默认使用 AES-GCM 密文保存 Basic Auth 凭证，密钥优先存为 IndexedDB 中不可导出的 CryptoKey。
+ * - 可信内网可显式关闭安全存储，将凭证明文保存在当前标签页的 sessionStorage 中。
  */
 
 // TODO: 若未来需要同时管理多个 Transmission 实例，请将 transClient 改为工厂函数，确保 Session-Id / auth 按后端隔离。
@@ -19,12 +18,31 @@ const AUTH_DB_NAME = 'torrentmix-auth'
 const AUTH_DB_STORE = 'keys'
 const AUTH_DB_KEY_ID = 'trans-session-auth'
 const MAX_409_RETRIES = 2
+const TRANS_AUTH_SCHEMA = 2
 
-type StoredTransSessionAuth = {
+type StoredSecureTransAuth = {
+  schema: typeof TRANS_AUTH_SCHEMA
+  mode: 'secure'
   baseURL: string
   iv: string
   data: string
 }
+
+type StoredInsecureTransAuth = {
+  schema: typeof TRANS_AUTH_SCHEMA
+  mode: 'insecure-session'
+  baseURL: string
+  username: string
+  password: string
+}
+
+type StoredAnonymousTransAuth = {
+  schema: typeof TRANS_AUTH_SCHEMA
+  mode: 'anonymous'
+  baseURL: string
+}
+
+export type TransAuthPersistence = 'secure' | 'insecure-session' | 'anonymous' | 'memory-only'
 
 type TransAuthPayload = {
   username: string
@@ -56,6 +74,11 @@ export function getConfiguredTransBaseUrl(): string {
 export function hasConfiguredTransUrl(): boolean {
   const env = getTransEnv()
   return String(env.VITE_TR_URL ?? '').trim().length > 0
+}
+
+export function usesSecureCredentialStorage(): boolean {
+  const raw = String(getTransEnv().VITE_SECURE_CREDENTIAL_STORAGE ?? 'true').trim().toLowerCase()
+  return !['false', '0', 'off', 'no'].includes(raw)
 }
 
 const baseURL = getConfiguredTransBaseUrl()
@@ -204,19 +227,40 @@ export function clearTransSessionId(): void {
   delete headers.common?.['x-transmission-session-id']
 }
 
-export async function saveTransSessionAuth(username: string, password: string): Promise<void> {
+export async function saveTransSessionAuth(username: string, password: string): Promise<TransAuthPersistence> {
+  const storage = getSessionStorage()
+
   if (!username && !password) {
-    removeStoredTransSessionAuth()
-    return
+    if (!storage) return 'memory-only'
+    const payload: StoredAnonymousTransAuth = {
+      schema: TRANS_AUTH_SCHEMA,
+      mode: 'anonymous',
+      baseURL: getTransAuthScope(),
+    }
+    storage.setItem(TRANS_SESSION_AUTH_KEY, JSON.stringify(payload))
+    return 'anonymous'
   }
 
-  const storage = getSessionStorage()
+  if (!storage) return 'memory-only'
+
+  if (!usesSecureCredentialStorage()) {
+    const payload: StoredInsecureTransAuth = {
+      schema: TRANS_AUTH_SCHEMA,
+      mode: 'insecure-session',
+      baseURL: getTransAuthScope(),
+      username,
+      password,
+    }
+    storage.setItem(TRANS_SESSION_AUTH_KEY, JSON.stringify(payload))
+    return 'insecure-session'
+  }
+
   const subtle = getSubtleCrypto()
-  if (!storage || !subtle) return
+  if (!subtle) return 'memory-only'
 
   try {
     const key = await getAuthCryptoKey(true)
-    if (!key) return
+    if (!key) return 'memory-only'
 
     const iv = new Uint8Array(12)
     ;(globalThis as any).crypto.getRandomValues(iv)
@@ -224,15 +268,19 @@ export async function saveTransSessionAuth(username: string, password: string): 
     const plaintext = new TextEncoder().encode(JSON.stringify({ username, password } satisfies TransAuthPayload))
     const ciphertext = await subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext)
 
-    const payload: StoredTransSessionAuth = {
+    const payload: StoredSecureTransAuth = {
+      schema: TRANS_AUTH_SCHEMA,
+      mode: 'secure',
       baseURL: getTransAuthScope(),
       iv: bytesToBase64(iv),
       data: bytesToBase64(new Uint8Array(ciphertext)),
     }
     storage.setItem(TRANS_SESSION_AUTH_KEY, JSON.stringify(payload))
+    return 'secure'
   } catch {
     // 加密失败时放弃持久化（保持内存态登录），绝不回退到明文存储
     removeStoredTransSessionAuth()
+    return 'memory-only'
   }
 }
 
@@ -240,19 +288,43 @@ export async function restoreTransSessionAuth(): Promise<boolean> {
   if (transClient.defaults.auth) return true
 
   const storage = getSessionStorage()
-  const subtle = getSubtleCrypto()
-  if (!storage || !subtle) return false
+  if (!storage) return false
 
   const raw = storage.getItem(TRANS_SESSION_AUTH_KEY)
   if (!raw) return false
 
   try {
-    const payload = JSON.parse(raw) as Partial<StoredTransSessionAuth>
-    if (
-      payload.baseURL !== getTransAuthScope() ||
-      typeof payload.iv !== 'string' ||
-      typeof payload.data !== 'string'
-    ) {
+    const payload = JSON.parse(raw) as Record<string, unknown>
+    if (payload.baseURL !== getTransAuthScope()) {
+      clearTransSessionAuth()
+      return false
+    }
+
+    if (payload.mode === 'anonymous') return true
+
+    if (payload.mode === 'insecure-session') {
+      if (
+        usesSecureCredentialStorage() ||
+        typeof payload.username !== 'string' ||
+        typeof payload.password !== 'string' ||
+        (!payload.username && !payload.password)
+      ) {
+        clearTransSessionAuth()
+        return false
+      }
+
+      transClient.defaults.auth = { username: payload.username, password: payload.password }
+      return true
+    }
+
+    // 接受 schema 2 secure 记录，以及升级前没有 schema/mode 的 AES-GCM 记录。
+    if (typeof payload.iv !== 'string' || typeof payload.data !== 'string') {
+      clearTransSessionAuth()
+      return false
+    }
+
+    const subtle = getSubtleCrypto()
+    if (!subtle) {
       clearTransSessionAuth()
       return false
     }
@@ -263,10 +335,12 @@ export async function restoreTransSessionAuth(): Promise<boolean> {
       return false
     }
 
+    const iv = payload.iv
+    const data = payload.data
     const plaintext = await subtle.decrypt(
-      { name: 'AES-GCM', iv: base64ToBytes(payload.iv) },
+      { name: 'AES-GCM', iv: base64ToBytes(iv) },
       key,
-      base64ToBytes(payload.data).buffer as ArrayBuffer,
+      base64ToBytes(data).buffer as ArrayBuffer,
     )
     const parsed = JSON.parse(new TextDecoder().decode(plaintext)) as Partial<TransAuthPayload>
     const username = parsed.username

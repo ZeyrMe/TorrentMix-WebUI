@@ -291,6 +291,15 @@ export async function detectTransmissionWithVersionAuth(): Promise<BackendVersio
   return unknownTransmissionVersion()
 }
 
+export async function detectQbitWithVersionAuth(): Promise<BackendVersion> {
+  try {
+    const probed = await probeQbitVersion(silentApiClient)
+    if (probed) return probed
+  } catch {}
+
+  return unknownQbitVersion()
+}
+
 /**
  * 探测后端类型并获取版本信息（已认证版本）
  * 此函数会携带凭证，用于登录后获取真实版本号
@@ -301,12 +310,7 @@ export async function detectBackendWithVersionAuth(_timeout = 3000): Promise<Bac
   // 使用 silentApiClient 来携带已登录的 cookie，但不会在 403 时抛出 AuthError
   // 强制 qBittorrent：只尝试 qB
   if (forced === 'qbit') {
-    try {
-      const probed = await probeQbitVersion(silentApiClient)
-      if (probed) return probed
-    } catch {}
-
-    return unknownQbitVersion()
+    return detectQbitWithVersionAuth()
   }
 
   // 强制或显式配置 Transmission：只尝试带凭据的 TR 探测。
@@ -317,6 +321,7 @@ export async function detectBackendWithVersionAuth(_timeout = 3000): Promise<Bac
   // 自动探测：优先尝试 qBittorrent
   try {
     const probed = await probeQbitVersion(silentApiClient)
+    // 403/unknown 仍然证明端点是 qBittorrent，不能继续请求可能受 Basic Auth 保护的 Transmission。
     if (probed) return probed
   } catch {}
 
@@ -334,8 +339,8 @@ export async function detectBackendWithVersionAuth(_timeout = 3000): Promise<Bac
 export async function detectBackendWithVersion(timeout = 3000): Promise<BackendVersion> {
   const forced = getForcedBackend()
 
-  // 强制或显式配置 Transmission 时，不做未认证探测，避免浏览器弹 Basic Auth。
-  if (forced === 'trans' || hasConfiguredTransUrl()) {
+  // 显式后端类型始终高于 URL 配置。仅在 auto 模式下，显式 TR URL 才代表选择 Transmission。
+  if (forced === 'trans' || (!forced && hasConfiguredTransUrl())) {
     return unknownTransmissionVersion()
   }
 

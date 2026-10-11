@@ -3,10 +3,10 @@ import { ref } from 'vue'
 import { useBackendStore } from './backend'
 import type { BaseAdapter } from '@/adapter/interface'
 import { detectBackendTypeOnly, detectBackendWithVersionAuth, type BackendType, type BackendVersion } from '@/adapter/detect'
-import { createAdapterByType, saveVersionCache, clearVersionCache, createAdapter, rebootAdapterWithAuth, resolveQbitFeatures, createTransAdapterWithAuth } from '@/adapter/factory'
+import { createAdapterByType, saveVersionCache, clearVersionCache, resolveQbitFeatures, createQbitAdapterWithAuth, createTransAdapterWithAuth } from '@/adapter/factory'
 import { QbitAdapter, DEFAULT_QBIT_FEATURES } from '@/adapter/qbit'
 import { TransAdapter } from '@/adapter/trans'
-import { clearTransSessionAuth, hasConfiguredTransUrl, restoreTransSessionAuth } from '@/api/trans-client'
+import { clearTransSessionAuth, restoreTransSessionAuth } from '@/api/trans-client'
 
 const isDev = Boolean((import.meta as any).env?.DEV)
 function debugLog(...args: unknown[]) {
@@ -32,11 +32,11 @@ type LoginDeps = {
 }
 
 type RequiredCheckSessionDeps = {
-  createAdapter: () => Promise<{ adapter: BaseAdapter; version: BackendVersion }>
-  rebootAdapterWithAuth: () => Promise<{ adapter: BaseAdapter; version: BackendVersion }>
+  detectBackendTypeOnly: (timeout?: number) => Promise<BackendType>
+  createAdapterByType: (backendType: BackendType) => Promise<BaseAdapter>
+  createQbitAdapterWithAuth: () => Promise<{ adapter: BaseAdapter; version: BackendVersion }>
   createTransAdapterWithAuth: () => Promise<{ adapter: BaseAdapter; version: BackendVersion }>
   restoreTransSessionAuth: () => boolean | Promise<boolean>
-  hasConfiguredTransUrl: () => boolean
   clearTransSessionAuth: () => void
 }
 
@@ -54,11 +54,11 @@ const DEFAULT_LOGIN_DEPS: LoginDeps = {
 }
 
 const DEFAULT_CHECK_SESSION_DEPS: RequiredCheckSessionDeps = {
-  createAdapter,
-  rebootAdapterWithAuth,
+  detectBackendTypeOnly,
+  createAdapterByType,
+  createQbitAdapterWithAuth,
   createTransAdapterWithAuth,
   restoreTransSessionAuth,
-  hasConfiguredTransUrl,
   clearTransSessionAuth,
 }
 
@@ -156,7 +156,11 @@ export const useAuthStore = defineStore('auth', () => {
       const d = { ...DEFAULT_CHECK_SESSION_DEPS, ...(deps ?? {}) }
       isChecking.value = true
       try {
-        if (await d.restoreTransSessionAuth()) {
+        const backendType = await d.detectBackendTypeOnly()
+
+        if (backendType === 'trans') {
+          if (!await d.restoreTransSessionAuth()) return false
+
           try {
             const { adapter: transAdapter, version: transVersion } = await d.createTransAdapterWithAuth()
             const valid = await transAdapter.checkSession()
@@ -177,28 +181,34 @@ export const useAuthStore = defineStore('auth', () => {
           }
         }
 
-        if (d.hasConfiguredTransUrl()) {
-          return false
-        }
-
-        // 验证 session 是否有效
-        // 注意：先验证，后上岗，避免把未认证的 adapter/version 写进全局 store
-        const { adapter: tempAdapter, version: tempVersion } = await d.createAdapter()
+        // qBittorrent 刷新只验证 SID Cookie，绝不读取或请求 Transmission。
+        const tempAdapter = await d.createAdapterByType('qbit')
         const valid = await tempAdapter.checkSession()
         if (!valid) return false
 
-        // session 有效：在已认证上下文中重建一次 adapter，拿到真实版本/features（例如 qB v5 的 stop/start）
-        try {
-          const { adapter: finalAdapter, version: finalVersion } = await d.rebootAdapterWithAuth()
-          backendStore.setAdapter(finalAdapter, finalVersion)
-        } catch (error) {
-          console.warn('[Auth] Reboot adapter with auth failed; falling back to temp adapter.', error)
-          backendStore.setAdapter(tempAdapter, tempVersion)
+        let finalAdapter = tempAdapter
+        let finalVersion: BackendVersion = {
+          type: 'qbit',
+          version: 'unknown',
+          major: 4,
+          minor: 0,
+          patch: 0,
+          isUnknown: true,
         }
+
+        try {
+          const restored = await d.createQbitAdapterWithAuth()
+          finalAdapter = restored.adapter
+          finalVersion = restored.version
+        } catch (error) {
+          console.warn('[Auth] qBittorrent version restore failed; using conservative features.', error)
+        }
+
+        backendStore.setAdapter(finalAdapter, finalVersion)
 
         isAuthenticated.value = true
         isDisconnected.value = false
-        isSecuredConnection.value = isSecuredConnectionByAdapter(backendStore.adapter ?? tempAdapter as any)
+        isSecuredConnection.value = isSecuredConnectionByAdapter(finalAdapter)
         return true
       } catch (error) {
         console.warn('[Auth] Session restore failed:', error)
@@ -222,7 +232,10 @@ export const useAuthStore = defineStore('auth', () => {
       if (valid && backendStore.version?.isUnknown) {
         try {
           const d = { ...DEFAULT_CHECK_SESSION_DEPS, ...(deps ?? {}) }
-          const { adapter: finalAdapter, version: finalVersion } = await d.rebootAdapterWithAuth()
+          const restored = backendStore.backendType === 'trans'
+            ? await d.createTransAdapterWithAuth()
+            : await d.createQbitAdapterWithAuth()
+          const { adapter: finalAdapter, version: finalVersion } = restored
           backendStore.setAdapter(finalAdapter, finalVersion)
           isSecuredConnection.value = isSecuredConnectionByAdapter(finalAdapter)
         } catch (error) {

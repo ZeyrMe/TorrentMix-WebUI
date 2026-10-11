@@ -247,3 +247,34 @@ test('version detection: VITE_TR_URL skips unauthenticated Transmission version 
     mock.restoreAll()
   }
 })
+
+test('version detection: forced qBittorrent overrides a configured Transmission URL', async () => {
+  const previousBackend = process.env.VITE_BACKEND_TYPE
+  const previousTransUrl = process.env.VITE_TR_URL
+  process.env.VITE_BACKEND_TYPE = 'qbit'
+  process.env.VITE_TR_URL = 'http://localhost:9091/transmission/rpc'
+
+  let getCalls = 0
+  const detector = {
+    get: async () => {
+      getCalls++
+      return { status: 200, data: '5.1.0', headers: {} }
+    },
+  }
+
+  try {
+    mock.method(axios as any, 'create', () => detector as any)
+
+    const version = await detectBackendWithVersion(1000)
+
+    assert.equal(version.type, 'qbit')
+    assert.equal(version.version, '5.1.0')
+    assert.ok(getCalls >= 1)
+  } finally {
+    if (previousBackend === undefined) delete process.env.VITE_BACKEND_TYPE
+    else process.env.VITE_BACKEND_TYPE = previousBackend
+    if (previousTransUrl === undefined) delete process.env.VITE_TR_URL
+    else process.env.VITE_TR_URL = previousTransUrl
+    mock.restoreAll()
+  }
+})

@@ -154,7 +154,7 @@ enum TorrentState {
   - **Session-based**: 使用 httpOnly cookies + SameSite=Strict
   - **Per-session Input**: 用户每次会话输入凭证，内存中暂存
   - **Web Crypto API**: 加密存储 + 用户主密码解锁
-  - **当前实现（Transmission）**: 凭证经 AES-GCM 加密后写入 sessionStorage，密钥为 IndexedDB 中不可导出的 CryptoKey，明文不落盘（见 `src/api/trans-client.ts`）
+  - **当前实现（Transmission）**: 默认将凭证经 AES-GCM 加密后写入 sessionStorage，密钥为 IndexedDB 中不可导出的 CryptoKey（见 `src/api/trans-client.ts`）。可信内网的 HTTP 部署可显式设置 `VITE_SECURE_CREDENTIAL_STORAGE=false`，降级为明文 sessionStorage；该模式仅跨刷新保留，关闭标签页后清除。
 
 #### qBittorrent Security
 - **CSRF 防护**: 检查后端是否支持 CSRF token

@@ -66,6 +66,7 @@ test('Transmission: checkSession should succeed without Basic Auth when backend 
 })
 
 test('Transmission: login should trim Basic Auth credentials', async () => {
+  const restoreWindow = installSessionStorage()
   const adapter = new TransAdapter()
   const originalAuth = transClient.defaults.auth
 
@@ -88,6 +89,7 @@ test('Transmission: login should trim Basic Auth credentials', async () => {
   } finally {
     transClient.defaults.auth = originalAuth
     mock.restoreAll()
+    restoreWindow()
   }
 })
 

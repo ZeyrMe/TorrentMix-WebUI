@@ -36,10 +36,12 @@ async function handleSubmit() {
     await authStore.login(username.value, password.value)
     password.value = ''
     await router.push('/')
-  } catch {
-    error.value = isTransmission.value
-      ? '连接失败，请检查连接地址或凭证配置'
-      : '登录失败，请检查用户名和密码'
+  } catch (err) {
+    error.value = err instanceof Error && err.message
+      ? err.message
+      : isTransmission.value
+        ? '连接失败，请检查连接地址或凭证配置'
+        : '登录失败，请检查用户名和密码'
     password.value = ''
   } finally {
     loading.value = false
