@@ -1,0 +1,23 @@
+{
+  "index.html": {
+    "file": "assets/index-OvZpiv70.js",
+    "name": "index",
+    "src": "index.html",
+    "isEntry": true,
+    "css": [
+      "assets/index-CgpX9Wwh.css"
+    ],
+    "assets": [
+      "assets/inter-H_M6nIbt.ttf",
+      "assets/jetbrains-mono-DgTxpPXt.ttf"
+    ]
+  },
+  "src/assets/fonts/inter.ttf": {
+    "file": "assets/inter-H_M6nIbt.ttf",
+    "src": "src/assets/fonts/inter.ttf"
+  },
+  "src/assets/fonts/jetbrains-mono.ttf": {
+    "file": "assets/jetbrains-mono-DgTxpPXt.ttf",
+    "src": "src/assets/fonts/jetbrains-mono.ttf"
+  }
+}
