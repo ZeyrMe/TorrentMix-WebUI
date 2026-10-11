@@ -6,7 +6,7 @@
 
 [![Build](https://img.shields.io/github/actions/workflow/status/ZeyrMe/TorrentMix-WebUI/release.yml?style=flat-square&label=构建)](../../actions) [![Release](https://img.shields.io/github/v/release/ZeyrMe/TorrentMix-WebUI?style=flat-square)](../../releases/latest) [![License](https://img.shields.io/github/license/ZeyrMe/TorrentMix-WebUI?style=flat-square)](LICENSE) [![Vue](https://img.shields.io/badge/Vue-3.5-42b883?style=flat-square&logo=vue.js)](https://vuejs.org/) [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178c6?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
 
-[快速开始](#快速开始) · [部署方案](#部署方案) · [本地开发](#本地开发) · [贡献指南](#贡献指南)
+[快速开始](#快速开始) · [部署方案](#部署方案) · [完整部署总览](docs/deployment.zh-CN.md) · [本地开发](#本地开发) · [贡献指南](#贡献指南)
 
 [English](README.md)
 
@@ -45,16 +45,23 @@
 ### Docker（Standalone 模式，最稳）
 
 ```bash
+VERSION=0.1.0
+curl -fL -o torrentmix-standalone-image.tar.gz \
+  "https://github.com/ZeyrMe/TorrentMix-WebUI/releases/download/v${VERSION}/torrentmix-standalone-service-v${VERSION}-docker-linux-amd64.tar.gz"
+gzip -dc torrentmix-standalone-image.tar.gz | docker load
+
 docker run -d \
   -p 8888:8080 \
   -e TORRENTMIX_DB_KEY='replace-with-a-long-random-string' \
   -v torrentmix-catalog:/config \
-  ZeyrMe/torrentmix-webui
+  "torrentmix-standalone-service:${VERSION}"
 ```
 
 然后访问 `http://localhost:8888`，通过 **切换服务器 → 管理服务器** 创建第一个后端。详见 [deploy/standalone-service/README.md](deploy/standalone-service/README.md)。
 
 ## 部署方案
+
+完整的模式选择和各自的部署方式见 [部署总览](docs/deployment.zh-CN.md)。
 
 根据你的场景选择合适的分发形态：
 

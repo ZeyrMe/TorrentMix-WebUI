@@ -6,7 +6,7 @@
 
 [![Build](https://img.shields.io/github/actions/workflow/status/ZeyrMe/TorrentMix-WebUI/release.yml?style=flat-square&label=build)](../../actions) [![Release](https://img.shields.io/github/v/release/ZeyrMe/TorrentMix-WebUI?style=flat-square)](../../releases/latest) [![License](https://img.shields.io/github/license/ZeyrMe/TorrentMix-WebUI?style=flat-square)](LICENSE) [![Vue](https://img.shields.io/badge/Vue-3.5-42b883?style=flat-square&logo=vue.js)](https://vuejs.org/) [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178c6?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
 
-[Getting Started](#getting-started) · [Deployment](#deployment) · [Local Development](#local-development) · [Contributing](#contributing)
+[Getting Started](#getting-started) · [Deployment](#deployment) · [Full deployment overview](docs/deployment.md) · [Local Development](#local-development) · [Contributing](#contributing)
 
 [中文文档](README.zh-CN.md)
 
@@ -45,16 +45,23 @@ The core goal is simple: **don't make deployment a pain**. The repo ships four d
 ### Docker (Standalone — most stable)
 
 ```bash
+VERSION=0.1.0
+curl -fL -o torrentmix-standalone-image.tar.gz \
+  "https://github.com/ZeyrMe/TorrentMix-WebUI/releases/download/v${VERSION}/torrentmix-standalone-service-v${VERSION}-docker-linux-amd64.tar.gz"
+gzip -dc torrentmix-standalone-image.tar.gz | docker load
+
 docker run -d \
   -p 8888:8080 \
   -e TORRENTMIX_DB_KEY='replace-with-a-long-random-string' \
   -v torrentmix-catalog:/config \
-  ZeyrMe/torrentmix-webui
+  "torrentmix-standalone-service:${VERSION}"
 ```
 
 Then open `http://localhost:8888` and add your first backend in **Switch Server → Manage Servers**. See [deploy/standalone-service/README.md](deploy/standalone-service/README.md) for full options.
 
 ## Deployment
+
+For the complete mode-selection guide and deployment commands, see the [deployment overview](docs/deployment.md).
 
 Pick the distribution format that fits your setup:
 

@@ -50,7 +50,7 @@ jobs:
         run: cargo test --manifest-path rust/Cargo.toml -p gateway
 
       - name: Build standalone-service
-        run: cargo build --manifest-path rust/Cargo.toml -p standalone-service
+        run: cargo build --manifest-path rust/Cargo.toml --release -p standalone-service
 
       - name: Test
         run: pnpm test
@@ -72,6 +72,45 @@ jobs:
           VERSION="$(node -p "require('./package.json').version")"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
+      - name: Package deployment artifacts
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p artifacts/release
+
+          bundle="artifacts/release/torrentmix-standalone-service-v${VERSION}-linux-amd64"
+          mkdir -p "${bundle}/dist"
+          cp rust/target/release/standalone-service "${bundle}/standalone-service"
+          unzip -q "artifacts/publish/releases/${VERSION}/dist.zip" -d "${bundle}/dist"
+          cp deploy/standalone-service/README.md "${bundle}/README.md"
+          cp deploy/standalone-service/README.zh-CN.md "${bundle}/README.zh-CN.md"
+          tar -czf \
+            "artifacts/release/torrentmix-standalone-service-v${VERSION}-linux-amd64.tar.gz" \
+            -C artifacts/release "torrentmix-standalone-service-v${VERSION}-linux-amd64"
+          rm -rf "${bundle}"
+
+      - name: Build Docker image archives
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          standalone_image="torrentmix-standalone-service:${VERSION}"
+          sidecar_image="torrentmix-sidecar:${VERSION}"
+
+          docker build --platform linux/amd64 -t "${standalone_image}" -f deploy/standalone-service/Dockerfile .
+          docker build --platform linux/amd64 -t "${sidecar_image}" -f deploy/sidecar/Dockerfile .
+          docker save "${standalone_image}" | gzip -n > \
+            "artifacts/release/torrentmix-standalone-service-v${VERSION}-docker-linux-amd64.tar.gz"
+          docker save "${sidecar_image}" | gzip -n > \
+            "artifacts/release/torrentmix-sidecar-v${VERSION}-docker-linux-amd64.tar.gz"
+
+          tar -tzf "artifacts/release/torrentmix-standalone-service-v${VERSION}-linux-amd64.tar.gz" >/dev/null
+          gzip -t "artifacts/release/torrentmix-standalone-service-v${VERSION}-docker-linux-amd64.tar.gz"
+          gzip -t "artifacts/release/torrentmix-sidecar-v${VERSION}-docker-linux-amd64.tar.gz"
+
       - name: Create GitHub Release
         # noinspection UndefinedAction
         uses: softprops/action-gh-release@v2
@@ -83,6 +122,8 @@ jobs:
             artifacts/publish/manifest.json
             artifacts/publish/loader.html
             artifacts/publish/releases/${{ steps.meta.outputs.version }}/dist.zip
+            artifacts/release/*
+            deploy/sidecar/updater.mjs
 
       - name: Publish to gh-pages (latest.json + releases/)
         env:

@@ -19,7 +19,10 @@ COPY rust/Cargo.toml rust/Cargo.lock ./
 COPY rust/apps ./apps
 COPY rust/crates ./crates
 
-RUN cargo build --locked --release -p standalone-service
+RUN case "$(uname -m)" in \
+      aarch64) export RUSTFLAGS="-C link-arg=-lgcc" ;; \
+    esac && \
+    cargo build --locked --release -p standalone-service
 
 
 FROM alpine:3.20

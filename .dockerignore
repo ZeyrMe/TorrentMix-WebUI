@@ -1,0 +1,15 @@
+.git
+.github
+.codex
+.agents
+node_modules
+.pnpm-store
+.npm
+.cargo
+rust/target
+dist
+artifacts
+coverage
+*.log
+*.tmp
+.DS_Store
