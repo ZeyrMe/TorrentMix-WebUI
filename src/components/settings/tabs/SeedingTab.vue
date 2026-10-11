@@ -122,7 +122,7 @@ const backendLabel = computed(() => {
         </label>
       </div>
       <label v-if="shareRatioLimited" class="space-y-1">
-        <span class="text-xs text-gray-500">达到分享率后停止做种（关闭开关表示不限制）</span>
+        <span class="text-xs text-slate-500">达到分享率后停止做种（关闭开关表示不限制）</span>
         <input v-model="shareRatioLimitInput" type="number" min="0" step="0.1" class="input" placeholder="例如：1.0" />
       </label>
       <p v-if="shareRatioLimited && (!modelValue.shareRatioLimit || modelValue.shareRatioLimit <= 0)" class="text-xs text-amber-700 mt-2">
@@ -141,11 +141,11 @@ const backendLabel = computed(() => {
           启用
         </label>
       </div>
-      <p class="text-xs text-gray-500 mb-3">
+      <p class="text-xs text-slate-500 mb-3">
         {{ capabilities.seedingTimeLimitMode === 'idle' ? `${backendLabel}：按空闲时长停止做种。` : `${backendLabel}：按做种总时长停止做种。` }}
       </p>
       <label v-if="seedingTimeLimited" class="space-y-1">
-        <span class="text-xs text-gray-500">
+        <span class="text-xs text-slate-500">
           {{ capabilities.seedingTimeLimitMode === 'idle' ? '空闲时长（分钟）' : '做种时长（分钟）' }}
         </span>
         <input v-model="seedingTimeLimitInput" type="number" min="0" class="input" placeholder="例如：60" />
@@ -165,7 +165,7 @@ const backendLabel = computed(() => {
         </label>
       </div>
       <label v-if="queueStalledEnabled" class="space-y-1">
-        <span class="text-xs text-gray-500">停滞时间（分钟）</span>
+        <span class="text-xs text-slate-500">停滞时间（分钟）</span>
         <input v-model="queueStalledMinutesInput" type="number" min="1" class="input" placeholder="例如：30" />
       </label>
       <p v-if="queueStalledEnabled && (!modelValue.queueStalledMinutes || modelValue.queueStalledMinutes < 1)" class="text-xs text-amber-700 mt-2">

@@ -62,7 +62,7 @@ function handleResizeStart(index: number, e: MouseEvent) {
 
 <template>
   <div
-    class="flex items-center bg-gray-100 border-b border-gray-200 text-xs text-gray-600 uppercase tracking-wide w-full min-w-0 overflow-hidden"
+    class="flex items-center bg-slate-100 border-b border-slate-200 text-xs text-slate-600 uppercase tracking-wide w-full min-w-0 overflow-hidden"
     :class="{ 'is-resizing': resizeState.isResizing }"
   >
     <div
@@ -84,7 +84,7 @@ function handleResizeStart(index: number, e: MouseEvent) {
       <button
         v-if="column.sortable"
         @click="$emit('toggleSort', column.id)"
-        class="w-full px-3 py-3 text-left hover:bg-gray-200 transition-colors duration-150 cursor-pointer"
+        class="w-full px-3 py-3 text-left hover:bg-slate-200 transition-colors duration-150 cursor-pointer"
         :class="{
           'text-center': column.align === 'center',
           'text-right': column.align === 'right'
@@ -114,15 +114,15 @@ function handleResizeStart(index: number, e: MouseEvent) {
         v-if="column.resizable !== false && renderedColumns[index + 1]?.resizable !== false"
         class="absolute inset-y-0 -right-1 w-2 cursor-col-resize flex items-center justify-center group/resize z-10"
         :class="{
-          'hover:bg-gray-300/60': !(resizeState.isResizing && resizeState.columnId === column.id),
-          'bg-gray-400/70': resizeState.isResizing && resizeState.columnId === column.id
+          'hover:bg-slate-300/60': !(resizeState.isResizing && resizeState.columnId === column.id),
+          'bg-slate-400/70': resizeState.isResizing && resizeState.columnId === column.id
         }"
         @mousedown.stop="handleResizeStart(index, $event)"
       >
         <!-- 可见的拖拽指示条 (只在悬停时显示) -->
         <div
-          class="w-0.5 h-4 bg-gray-400 rounded-full opacity-0 group-hover/resize:opacity-100 group-hover/resize:h-6 transition-all duration-150"
-          :class="{ 'opacity-100 !h-6 !bg-gray-600': resizeState.isResizing && resizeState.columnId === column.id }"
+          class="w-0.5 h-4 bg-slate-400 rounded-full opacity-0 group-hover/resize:opacity-100 group-hover/resize:h-6 transition-all duration-150"
+          :class="{ 'opacity-100 !h-6 !bg-slate-600': resizeState.isResizing && resizeState.columnId === column.id }"
         ></div>
       </div>
     </div>

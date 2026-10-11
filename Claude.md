@@ -4,7 +4,7 @@
 
 **Goal**: 开发一个高性能、极简（Vercel/Geist 风格）、支持移动端的第三方下载器 WebUI。
 
-**Core Tech**: Vue 3 (Script Setup), TypeScript, Vite, Tailwind CSS, Shadcn Vue.
+**Core Tech**: Vue 3 (Script Setup), TypeScript, Vite, Tailwind CSS（无第三方组件库，自研轻量组件）.
 
 **Target Backends**: qBittorrent (WebAPI v2, **v3.2.0+**) & Transmission (RPC, **全版本支持**).
 
@@ -33,7 +33,7 @@
 **职责**: 抹平后端 API 差异，提供归一化的数据模型。这是本项目的核心设计模式。
 
 - **原则**: 必须实现 BaseAdapter 接口。
-- **核心文件**: `src/adapter/interface.ts`, `src/adapter/qbit.ts`, `src/adapter/trans.ts`.
+- **核心文件**: `src/adapter/interface.ts`, `src/adapter/qbit/`, `src/adapter/trans/`, `src/adapter/detect.ts`, `src/adapter/factory.ts`.
 - **数据归一化 (Normalization)**:
   - 所有的 API 响应必须转换为 `UnifiedTorrent` 结构。
   - 速度单位统一为 bytes/s (raw number)，不要在这一层做字符串格式化。
@@ -93,17 +93,17 @@
 **职责**: 负责视觉呈现、响应式布局和交互。
 
 - **风格**: Vercel / Geist Design (1px borders, Inter/Mono fonts, high density).
-- **组件库**: Shadcn Vue + Tailwind CSS.
+- **组件库**: 无第三方组件库；Tailwind CSS + 自研轻量组件（Icon、SafeText、UiOverlayHost 等）.
 - **核心组件**:
-  - **VirtualList.vue**: 对于 >500 种子使用 @tanstack/vue-virtual。对于PT重度用户（数千种子）必需。
+  - **虚拟列表**: 基于 @tanstack/vue-virtual（VirtualTorrentList / VirtualTorrentCardList）；当前启用阈值为桌面 >200、移动 >80（见 DashboardView）。对于PT重度用户（数千种子）必需。
   - **TorrentCard.vue**: 移动端视图。
   - **TorrentRow.vue**: PC 端表格视图。
 - **响应式策略**:
   - 使用 Tailwind 断点 (`hidden md:table-cell`) 切换表格列。
-  - 移动端使用 Drawer (Vaul) 替代 Modal。
+  - 移动端使用自研 Drawer（TorrentDetailDrawer）替代 Modal。
 - **性能计算**: 
   - **大量数据排序**: 使用 `computed` + 防抖处理 1000+ 种子的排序
-  - **搜索优化**: Fuse.js 模糊搜索 + 结果缓存
+  - **搜索优化**: 子串匹配 + 300ms 防抖（未引入 Fuse.js；如需模糊搜索再评估）
   - **数据格式化**: 在组件层进行字节转换和时间格式化
 
 ---
@@ -154,6 +154,7 @@ enum TorrentState {
   - **Session-based**: 使用 httpOnly cookies + SameSite=Strict
   - **Per-session Input**: 用户每次会话输入凭证，内存中暂存
   - **Web Crypto API**: 加密存储 + 用户主密码解锁
+  - **当前实现（Transmission）**: 默认将凭证经 AES-GCM 加密后写入 sessionStorage，密钥为 IndexedDB 中不可导出的 CryptoKey（见 `src/api/trans-client.ts`）。可信内网的 HTTP 部署可显式设置 `VITE_SECURE_CREDENTIAL_STORAGE=false`，降级为明文 sessionStorage；该模式仅跨刷新保留，关闭标签页后清除。
 
 #### qBittorrent Security
 - **CSRF 防护**: 检查后端是否支持 CSRF token
@@ -330,7 +331,7 @@ src/
 - [ ] XSS 防护机制有效
 
 ### 性能检查  
-- [ ] 虚拟滚动在 500+ 种子时生效
+- [ ] 虚拟滚动在阈值（桌面 200+ / 移动 80+）种子数时生效
 - [ ] 轮询频率与熔断机制正常
 - [ ] 数据存储使用 shallowRef<Map>
 - [ ] 搜索和排序有防抖机制
@@ -370,7 +371,7 @@ src/
 ### Memory Management
 
 1. **大量数据存储**: 使用 `shallowRef<Map<string, T>>` 替代 `ref<T[]>`
-2. **虚拟滚动**: 对于 >100 项的列表，强制使用 `@tanstack/vue-virtual`
+2. **虚拟滚动**: 桌面 >200 / 移动 >80 项时启用 `@tanstack/vue-virtual`
 3. **Copy-on-write**: 更新 Map 时创建新引用而非修改原对象
 
 ### Network Optimization
@@ -687,4 +688,4 @@ if (backend.type === 'qBittorrent') {
 
 ---
 
-*Last Updated: 2026年1月3日*
+*Last Updated: 2026年7月26日*

@@ -13,6 +13,7 @@ import { AuthError } from '@/api/client'
 import type { UnifiedTorrent } from '@/adapter/types'
 import type { AddTorrentParams } from '@/adapter/interface'
 import type { DashboardDetailTab } from '@/utils/dashboardRouteState'
+import { TORRENT_STATE_META } from '@/utils/torrentState'
 import TorrentRow from '@/components/torrent/TorrentRow.vue'
 import TorrentCard from '@/components/torrent/TorrentCard.vue'
 import AddTorrentDialog from '@/components/AddTorrentDialog.vue'
@@ -410,6 +411,16 @@ const handleResize = () => {
   })
 }
 
+// 侧栏状态筛选项（元数据统一来自 TORRENT_STATE_META；paused 因带二级分类在模板中特殊处理）
+const stateFilterItems = computed(() => ([
+  { key: 'downloading' as const, meta: TORRENT_STATE_META.downloading, count: stats.value.downloading, ariaLabel: '筛选下载中的种子' },
+  { key: 'seeding' as const, meta: TORRENT_STATE_META.seeding, count: stats.value.seeding, ariaLabel: '筛选做种中的种子' },
+  { key: 'paused' as const, meta: TORRENT_STATE_META.paused, count: stats.value.paused, ariaLabel: '筛选已暂停的种子' },
+  { key: 'checking' as const, meta: TORRENT_STATE_META.checking, count: stats.value.checking, ariaLabel: '筛选检查中的种子' },
+  { key: 'queued' as const, meta: TORRENT_STATE_META.queued, count: stats.value.queued, ariaLabel: '筛选队列中的种子' },
+  { key: 'error' as const, meta: TORRENT_STATE_META.error, count: stats.value.error, ariaLabel: '筛选出错的种子' },
+]))
+
 // 统计数据 - 优先使用 ServerState 的全局速度（后端不支持时回退到求和）
 const stats = computed(() => {
   const torrents = Array.from(torrentStore.torrents.values())
@@ -763,7 +774,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="h-screen flex bg-gray-50">
+  <div class="h-screen flex bg-slate-50">
     <!-- 主内容区 -->
     <div class="flex-1 flex overflow-hidden relative">
       <!-- 移动端遮罩层 -->
@@ -775,7 +786,7 @@ onUnmounted(() => {
 
       <!-- 左侧边栏 -->
       <aside
-        :class="`bg-white border-r border-gray-200 flex flex-col shrink-0 z-50
+        :class="`bg-white border-r border-slate-200 flex flex-col shrink-0 z-50
         ${isMobile
           ? (sidebarCollapsed ? '-translate-x-full w-64 fixed left-0 top-0 h-full transition-transform duration-300' : 'translate-x-0 w-64 fixed left-0 top-0 h-full transition-transform duration-300')
           : (sidebarCollapsed ? 'w-16' : 'w-64')
@@ -783,8 +794,8 @@ onUnmounted(() => {
         :style="!isMobile ? 'transition: width 300ms ease;' : ''"
       >
         <!-- 移动端顶部栏 -->
-        <div v-if="isMobile" class="p-4 border-b border-gray-200 flex items-center justify-between">
-          <h2 class="font-medium text-gray-900">筛选</h2>
+        <div v-if="isMobile" class="p-4 border-b border-slate-200 flex items-center justify-between">
+          <h2 class="font-medium text-slate-900">筛选</h2>
           <button
             type="button"
             class="icon-btn"
@@ -799,11 +810,11 @@ onUnmounted(() => {
         <div
           v-else
           :class="[
-            'border-b border-gray-200 flex items-center',
+            'border-b border-slate-200 flex items-center',
             sidebarCollapsed ? 'justify-center px-0 py-4' : 'justify-between p-4'
           ]"
         >
-          <h2 :class="`font-medium text-gray-900 ${sidebarCollapsed ? 'hidden' : ''}`">TorrentMix UI</h2>
+          <h2 :class="`font-medium text-slate-900 ${sidebarCollapsed ? 'hidden' : ''}`">TorrentMix UI</h2>
           <button
             type="button"
             class="icon-btn"
@@ -821,109 +832,68 @@ onUnmounted(() => {
               type="button"
               aria-label="筛选全部种子"
               @click="stateFilter = 'all'"
-              :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${stateFilter === 'all' ? 'bg-black text-white' : 'text-gray-700 hover:bg-gray-100'}`"
+              :class="`flex items-center rounded-lg text-left transition-colors duration-150 ${sidebarCollapsed ? 'mx-auto h-10 w-10 justify-center px-0 py-0' : 'w-full gap-3 px-3 py-2'} ${stateFilter === 'all' ? 'bg-gray-200 text-gray-900' : 'text-gray-700 hover:bg-gray-100'}`"
             >
               <Icon name="list" :size="16" />
               <span :class="`truncate text-sm ${sidebarCollapsed ? 'hidden' : ''}`">全部</span>
-              <span v-if="stats.total > 0" :class="`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${sidebarCollapsed ? 'hidden' : ''} ${stateFilter === 'all' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-600'}`">{{ stats.total }}</span>
+              <span v-if="stats.total > 0" :class="`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${sidebarCollapsed ? 'hidden' : ''} ${stateFilter === 'all' ? 'bg-gray-300 text-gray-700' : 'bg-gray-200 text-gray-600'}`">{{ stats.total }}</span>
             </button>
 
-            <button
-              type="button"
-              aria-label="筛选下载中的种子"
-              @click="stateFilter = 'downloading'"
-              :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${stateFilter === 'downloading' ? 'bg-black text-white' : 'text-gray-700 hover:bg-gray-100'}`"
-            >
-              <Icon name="download" color="blue" :size="16" />
-              <span :class="`truncate text-sm ${sidebarCollapsed ? 'hidden' : ''}`">下载中</span>
-              <span v-if="stats.downloading > 0" :class="`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${sidebarCollapsed ? 'hidden' : ''} ${stateFilter === 'downloading' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-600'}`">{{ stats.downloading }}</span>
-            </button>
-
-            <button
-              type="button"
-              aria-label="筛选做种中的种子"
-              @click="stateFilter = 'seeding'"
-              :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${stateFilter === 'seeding' ? 'bg-black text-white' : 'text-gray-700 hover:bg-gray-100'}`"
-            >
-              <Icon name="upload-cloud" color="cyan" :size="16" />
-              <span :class="`truncate text-sm ${sidebarCollapsed ? 'hidden' : ''}`">做种中</span>
-              <span v-if="stats.seeding > 0" :class="`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${sidebarCollapsed ? 'hidden' : ''} ${stateFilter === 'seeding' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-600'}`">{{ stats.seeding }}</span>
-            </button>
-
-            <!-- 已暂停（固定展开二级分类） -->
-            <div>
-              <button
-                type="button"
-                aria-label="筛选已暂停的种子"
-                @click="stateFilter = 'paused'"
-                :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${stateFilter === 'paused' || stateFilter.startsWith('paused-') ? 'bg-black text-white' : 'text-gray-700 hover:bg-gray-100'}`"
-              >
-                <Icon name="pause-circle" color="gray" :size="16" />
-                <span :class="`truncate text-sm ${sidebarCollapsed ? 'hidden' : ''}`">已暂停</span>
-                <span v-if="stats.paused > 0" :class="`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${sidebarCollapsed ? 'hidden' : ''} ${stateFilter === 'paused' || stateFilter.startsWith('paused-') ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-600'}`">{{ stats.paused }}</span>
-              </button>
-
-              <!-- 二级分类：固定展开 -->
-              <div v-if="!sidebarCollapsed" class="ml-6 mt-1 space-y-1">
+            <template v-for="item in stateFilterItems" :key="item.key">
+              <!-- 已暂停（固定展开二级分类） -->
+              <div v-if="item.key === 'paused'">
                 <button
                   type="button"
-                  @click.stop="stateFilter = 'paused-completed'"
-                  :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${stateFilter === 'paused-completed' ? 'bg-gray-800 text-white' : 'text-gray-600 hover:bg-gray-100'}`"
+                  :aria-label="item.ariaLabel"
+                  @click="stateFilter = 'paused'"
+                  :class="`flex items-center rounded-lg text-left transition-colors duration-150 ${sidebarCollapsed ? 'mx-auto h-10 w-10 justify-center px-0 py-0' : 'w-full gap-3 px-3 py-2'} ${stateFilter === 'paused' || stateFilter.startsWith('paused-') ? 'bg-gray-200 text-gray-900' : 'text-gray-700 hover:bg-gray-100'}`"
                 >
-                  <Icon name="check-circle" color="green" :size="14" />
-                  <span class="truncate text-sm">已完成</span>
-                  <span v-if="stats.pausedCompleted > 0" :class="`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${stateFilter === 'paused-completed' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-600'}`">{{ stats.pausedCompleted }}</span>
+                  <Icon :name="item.meta.icon" :color="item.meta.color" :size="16" />
+                  <span :class="`truncate text-sm ${sidebarCollapsed ? 'hidden' : ''}`">{{ item.meta.label }}</span>
+                  <span v-if="item.count > 0" :class="`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${sidebarCollapsed ? 'hidden' : ''} ${stateFilter === 'paused' || stateFilter.startsWith('paused-') ? 'bg-gray-300 text-gray-700' : 'bg-gray-200 text-gray-600'}`">{{ item.count }}</span>
                 </button>
 
-                <button
-                  type="button"
-                  @click.stop="stateFilter = 'paused-incomplete'"
-                  :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${stateFilter === 'paused-incomplete' ? 'bg-gray-800 text-white' : 'text-gray-600 hover:bg-gray-100'}`"
-                >
-                  <Icon name="download-cloud" color="orange" :size="14" />
-                  <span class="truncate text-sm">未完成</span>
-                  <span v-if="stats.pausedIncomplete > 0" :class="`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${stateFilter === 'paused-incomplete' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-600'}`">{{ stats.pausedIncomplete }}</span>
-                </button>
+                <!-- 二级分类：固定展开 -->
+                <div v-if="!sidebarCollapsed" class="ml-6 mt-1 space-y-1">
+                  <button
+                    type="button"
+                    @click.stop="stateFilter = 'paused-completed'"
+                    :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${stateFilter === 'paused-completed' ? 'bg-gray-200 text-gray-900' : 'text-gray-600 hover:bg-gray-100'}`"
+                  >
+                    <Icon name="check-circle" color="green" :size="14" />
+                    <span class="truncate text-sm">已完成</span>
+                    <span v-if="stats.pausedCompleted > 0" :class="`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${stateFilter === 'paused-completed' ? 'bg-gray-300 text-gray-700' : 'bg-gray-200 text-gray-600'}`">{{ stats.pausedCompleted }}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    @click.stop="stateFilter = 'paused-incomplete'"
+                    :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${stateFilter === 'paused-incomplete' ? 'bg-gray-200 text-gray-900' : 'text-gray-600 hover:bg-gray-100'}`"
+                  >
+                    <Icon name="download-cloud" color="orange" :size="14" />
+                    <span class="truncate text-sm">未完成</span>
+                    <span v-if="stats.pausedIncomplete > 0" :class="`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${stateFilter === 'paused-incomplete' ? 'bg-gray-300 text-gray-700' : 'bg-gray-200 text-gray-600'}`">{{ stats.pausedIncomplete }}</span>
+                  </button>
+                </div>
               </div>
-            </div>
 
-            <button
-              type="button"
-              aria-label="筛选检查中的种子"
-              @click="stateFilter = 'checking'"
-              :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${stateFilter === 'checking' ? 'bg-black text-white' : 'text-gray-700 hover:bg-gray-100'}`"
-            >
-              <Icon name="refresh-cw" color="purple" :size="16" />
-              <span :class="`truncate text-sm ${sidebarCollapsed ? 'hidden' : ''}`">检查中</span>
-              <span v-if="stats.checking > 0" :class="`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${sidebarCollapsed ? 'hidden' : ''} ${stateFilter === 'checking' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-600'}`">{{ stats.checking }}</span>
-            </button>
-
-            <button
-              type="button"
-              aria-label="筛选队列中的种子"
-              @click="stateFilter = 'queued'"
-              :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${stateFilter === 'queued' ? 'bg-black text-white' : 'text-gray-700 hover:bg-gray-100'}`"
-            >
-              <Icon name="clock" color="orange" :size="16" />
-              <span :class="`truncate text-sm ${sidebarCollapsed ? 'hidden' : ''}`">队列中</span>
-              <span v-if="stats.queued > 0" :class="`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${sidebarCollapsed ? 'hidden' : ''} ${stateFilter === 'queued' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-600'}`">{{ stats.queued }}</span>
-            </button>
-
-            <button
-              type="button"
-              aria-label="筛选出错的种子"
-              @click="stateFilter = 'error'"
-              :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${stateFilter === 'error' ? 'bg-black text-white' : 'text-gray-700 hover:bg-gray-100'}`"
-            >
-              <Icon name="alert-circle" color="red" :size="16" />
-              <span :class="`truncate text-sm ${sidebarCollapsed ? 'hidden' : ''}`">错误</span>
-              <span v-if="stats.error > 0" :class="`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${sidebarCollapsed ? 'hidden' : ''} ${stateFilter === 'error' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-600'}`">{{ stats.error }}</span>
-            </button>
+              <button
+                v-else
+                type="button"
+                :aria-label="item.ariaLabel"
+                @click="stateFilter = item.key"
+                :class="`flex items-center rounded-lg text-left transition-colors duration-150 ${sidebarCollapsed ? 'mx-auto h-10 w-10 justify-center px-0 py-0' : 'w-full gap-3 px-3 py-2'} ${stateFilter === item.key ? 'bg-gray-200 text-gray-900' : 'text-gray-700 hover:bg-gray-100'}`"
+              >
+                <Icon :name="item.meta.icon" :color="item.meta.color" :size="16" />
+                <span :class="`truncate text-sm ${sidebarCollapsed ? 'hidden' : ''}`">{{ item.meta.label }}</span>
+                <span v-if="item.count > 0" :class="`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${sidebarCollapsed ? 'hidden' : ''} ${stateFilter === item.key ? 'bg-gray-300 text-gray-700' : 'bg-gray-200 text-gray-600'}`">{{ item.count }}</span>
+              </button>
+            </template>
           </div>
 
           <!-- 分类/目录筛选 -->
           <div v-if="showTaxonomyFilter" :class="`mt-4 ${sidebarCollapsed ? 'hidden' : ''}`">
-            <h3 :class="`text-xs font-medium text-gray-500 uppercase tracking-wider px-3 mb-2`">
+            <h3 :class="`text-xs font-medium text-slate-500 uppercase tracking-wider px-3 mb-2`">
               {{ taxonomyFacet.filterLabel }}
             </h3>
 
@@ -939,7 +909,7 @@ onUnmounted(() => {
               <button
                 type="button"
                 @click="categoryFilter = 'all'"
-                :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${categoryFilter === 'all' ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100'}`"
+                :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${categoryFilter === 'all' ? 'bg-gray-200 text-gray-900' : 'text-gray-700 hover:bg-gray-100'}`"
               >
                 <Icon name="folder" :size="14" />
                 <span class="truncate text-sm">{{ taxonomyFacet.allFilterLabel }}</span>
@@ -948,7 +918,7 @@ onUnmounted(() => {
                 v-if="backendStore.isQbit"
                 type="button"
                 @click="categoryFilter = ''"
-                :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${categoryFilter === '' ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100'}`"
+                :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${categoryFilter === '' ? 'bg-gray-200 text-gray-900' : 'text-gray-700 hover:bg-gray-100'}`"
               >
                 <Icon name="folder" :size="14" />
                 <span class="truncate text-sm">{{ taxonomyFacet.rootFilterLabel }}</span>
@@ -958,7 +928,7 @@ onUnmounted(() => {
                 :key="cat.name"
                 type="button"
                 @click="categoryFilter = cat.name"
-                :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${categoryFilter === cat.name ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100'}`"
+                :class="`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors duration-150 ${categoryFilter === cat.name ? 'bg-gray-200 text-gray-900' : 'text-gray-700 hover:bg-gray-100'}`"
               >
                 <Icon name="folder" :size="14" />
                 <SafeText as="span" class="truncate text-sm" :text="cat.name" />
@@ -968,12 +938,12 @@ onUnmounted(() => {
 
           <!-- 标签筛选 -->
           <div v-if="backendStore.tags.length > 0" :class="`mt-4 ${sidebarCollapsed ? 'hidden' : ''}`">
-            <h3 :class="`text-xs font-medium text-gray-500 uppercase tracking-wider px-3 mb-2`">标签</h3>
+            <h3 :class="`text-xs font-medium text-slate-500 uppercase tracking-wider px-3 mb-2`">标签</h3>
             <div class="flex flex-wrap gap-2 px-3">
               <button
                 type="button"
                 @click="tagFilter = 'all'"
-                :class="`px-2 py-1 rounded text-xs font-medium transition-colors ${tagFilter === 'all' ? 'bg-black text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`"
+                :class="`px-2 py-1 rounded text-xs font-medium transition-colors ${tagFilter === 'all' ? 'bg-gray-300 text-gray-900' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`"
               >
                 全部
               </button>
@@ -982,7 +952,7 @@ onUnmounted(() => {
                 :key="tag"
                 type="button"
                 @click="tagFilter = tag"
-                :class="`px-2 py-1 rounded text-xs font-medium transition-colors ${tagFilter === tag ? 'bg-black text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`"
+                :class="`px-2 py-1 rounded text-xs font-medium transition-colors ${tagFilter === tag ? 'bg-gray-300 text-gray-900' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`"
               >
                 <SafeText as="span" :text="tag" />
               </button>
@@ -994,7 +964,7 @@ onUnmounted(() => {
       <!-- 右侧主内容 -->
       <main class="flex-1 flex flex-col overflow-hidden bg-white">
         <!-- 工具栏 -->
-        <div class="border-b border-gray-200 px-3 py-2 sm:px-4 sm:py-3 flex flex-col gap-2 shrink-0">
+        <div class="border-b border-slate-200 px-3 py-2 sm:px-4 sm:py-3 flex flex-col gap-2 shrink-0">
           <!-- 单排：能放下时尽量一排 -->
           <div v-if="!useTwoRowToolbar" class="flex items-center gap-2 w-full min-w-0">
             <OverflowActionBar
@@ -1037,7 +1007,7 @@ onUnmounted(() => {
                     connectionStatus.type === 'warning' ? 'bg-yellow-500 animate-pulse' : 'bg-red-500'
                   }`"
                 ></div>
-                <span class="text-xs text-gray-500 max-w-[5rem] truncate">{{ connectionLabel }}</span>
+                <span class="text-xs text-slate-500 max-w-[5rem] truncate">{{ connectionLabel }}</span>
               </div>
 
               <ServerSwitchMenu />
@@ -1188,8 +1158,8 @@ onUnmounted(() => {
               <!-- 空状态 -->
               <div v-else class="px-4 py-16 text-center h-full flex items-center justify-center">
                 <div class="flex flex-col items-center gap-4">
-                  <Icon name="inbox" :size="48" class="text-gray-300" />
-                  <div class="text-gray-500">
+                  <Icon name="inbox" :size="48" class="text-slate-300" />
+                  <div class="text-slate-500">
                     <p class="font-medium">{{ uiState.filter ? '未找到匹配的种子' : '暂无种子' }}</p>
                     <p class="text-sm mt-1">{{ uiState.filter ? '尝试调整搜索关键词' : '添加种子后将在此处显示' }}</p>
                   </div>
@@ -1202,8 +1172,8 @@ onUnmounted(() => {
           <div v-else ref="mobileScrollRef" class="h-full overflow-auto p-4">
             <!-- 空状态 -->
             <div v-if="sortedTorrents.length === 0" class="text-center py-16">
-              <Icon name="inbox" :size="64" class="text-gray-300 mx-auto mb-4" />
-              <div class="text-gray-500">
+              <Icon name="inbox" :size="64" class="text-slate-300 mx-auto mb-4" />
+              <div class="text-slate-500">
                 <p class="font-medium text-base">{{ uiState.filter ? '未找到匹配的种子' : '暂无种子' }}</p>
                 <p class="text-sm mt-1">{{ uiState.filter ? '尝试调整搜索关键词' : '添加种子后将在此处显示' }}</p>
               </div>

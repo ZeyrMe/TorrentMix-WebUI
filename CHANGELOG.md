@@ -43,3 +43,22 @@
   1) 从 Releases 下载 `dist.zip`。
 
   2) 解压到后端 WebUI 目录（目录根应包含 `index.html`），刷新即可生效。
+
+### Security
+
+- Transmission Basic Auth 凭证不再以明文写入 sessionStorage：改为 AES-GCM 加密存储，密钥保存在 IndexedDB 中的不可导出 CryptoKey；无 IndexedDB 的环境降级为密钥与密文同存，加密失败时放弃持久化而非回退明文。
+
+### Fixed
+
+- Transmission 409 CSRF 重试增加次数上限（2 次），并在重试时显式覆盖请求配置中过期的 `X-Transmission-Session-Id`。
+- 修复轮询在页面可见性恢复时可能并发出两条轮询链的竞态。
+- 种子列表排序增加稳定次级键（id），避免轮询更新时同值行来回抖动。
+
+### Changed
+
+- 删除确认统一为应用内 `overlay.confirm`（原部分对话框使用原生 `confirm()`）。
+- ETA 格式化收敛为 `utils/format.ts` 的 `formatEta`，列表行与卡片共用。
+
+### Removed
+
+- 删除脚手架残留 `HelloWorld.vue`、`vue.svg` 与已废弃的 `QbitV4Adapter`/`QbitV5Adapter` 兼容别名。

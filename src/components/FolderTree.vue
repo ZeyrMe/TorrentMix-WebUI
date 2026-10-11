@@ -57,7 +57,7 @@ watch(() => props.modelValue, (value) => {
       type="button"
       @click="select('all')"
       :class="`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-all duration-150 ${
-        modelValue === 'all' ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100'
+        modelValue === 'all' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'
       }`"
     >
       <Icon name="folder-open" :size="14" />
@@ -69,7 +69,7 @@ watch(() => props.modelValue, (value) => {
       type="button"
       @click="select('')"
       :class="`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-all duration-150 ${
-        modelValue === '' ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100'
+        modelValue === '' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'
       }`"
     >
       <Icon name="folder" :size="14" />

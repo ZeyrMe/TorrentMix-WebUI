@@ -1,6 +1,6 @@
 import type { BaseAdapter } from './interface'
 import type { BackendVersion, QbitFeatures } from './detect'
-import { detectBackendWithVersion, detectBackendWithVersionAuth, detectTransmissionWithVersionAuth } from './detect'
+import { detectBackendWithVersion, detectBackendWithVersionAuth, detectQbitWithVersionAuth, detectTransmissionWithVersionAuth } from './detect'
 import { QbitAdapter, DEFAULT_QBIT_FEATURES } from './qbit'
 import { TransAdapter } from './trans/index'
 
@@ -90,6 +90,19 @@ export async function createTransAdapterWithAuth(): Promise<{ adapter: BaseAdapt
 
   return {
     adapter: new TransAdapter({ rpcSemver: version.rpcSemver }),
+    version,
+  }
+}
+
+export async function createQbitAdapterWithAuth(): Promise<{ adapter: BaseAdapter; version: BackendVersion }> {
+  const version = await detectQbitWithVersionAuth()
+
+  if (!version.isUnknown) {
+    saveVersionCache(version)
+  }
+
+  return {
+    adapter: new QbitAdapter(resolveQbitFeatures(version)),
     version,
   }
 }

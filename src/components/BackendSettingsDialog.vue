@@ -6,6 +6,8 @@ import { resolveInitialBackendSettingsTab, type BackendSettingsTabId } from '@/u
 import Icon from '@/components/Icon.vue'
 import SeedingTab from './settings/tabs/SeedingTab.vue'
 import PathsTab from './settings/tabs/PathsTab.vue'
+import { useModalKeyboard } from '@/composables/useModalKeyboard'
+import Spinner from '@/components/ui/Spinner.vue'
 
 interface Props {
   open: boolean
@@ -18,6 +20,9 @@ interface Emits {
 
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
+
+const panelRef = ref<HTMLElement | null>(null)
+useModalKeyboard(panelRef, () => emit('close'), computed(() => props.open))
 
 const backendStore = useBackendStore()
 const adapter = computed(() => backendStore.adapter)
@@ -328,13 +333,20 @@ onMounted(() => {
       class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
       @click.self="emit('close')"
     >
-      <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[calc(100vh-2rem)] overflow-hidden flex flex-col">
+      <div
+        ref="panelRef"
+        tabindex="-1"
+        role="dialog"
+        aria-modal="true"
+        aria-label="后端设置"
+        class="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[calc(100vh-2rem)] overflow-hidden flex flex-col outline-none"
+      >
         <!-- 头部 -->
-        <div class="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200">
+        <div class="px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-200">
           <div class="flex items-start justify-between gap-3">
             <div>
               <h2 class="text-lg font-semibold">后端设置</h2>
-              <p class="text-xs text-gray-500">{{ backendStore.backendName }}</p>
+              <p class="text-xs text-slate-500">{{ backendStore.backendName }}</p>
             </div>
             <div class="flex items-center gap-2">
               <span v-if="isDirty" class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
@@ -347,7 +359,7 @@ onMounted(() => {
         </div>
 
         <!-- Tab 导航 -->
-        <div class="border-b border-gray-200 px-4 sm:px-6">
+        <div class="border-b border-slate-200 px-4 sm:px-6">
           <nav class="flex flex-nowrap gap-4 sm:gap-6 -mb-px overflow-x-auto max-w-full">
             <button
               v-for="tab in tabs"
@@ -356,7 +368,7 @@ onMounted(() => {
               :class="`px-1 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap shrink-0 ${
                 activeTab === tab.id
                   ? 'border-black text-black'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
+                  : 'border-transparent text-slate-500 hover:text-slate-700'
               }`"
             >
               {{ tab.label }}
@@ -366,7 +378,7 @@ onMounted(() => {
 
         <!-- 内容区 -->
         <div ref="contentScrollRef" class="flex-1 overflow-auto p-4 sm:p-6">
-          <div v-if="loading" class="text-sm text-gray-500">加载中...</div>
+          <Spinner v-if="loading" />
 
           <div v-else class="space-y-4">
             <div v-if="error" class="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
@@ -382,16 +394,16 @@ onMounted(() => {
 
               <div class="card p-4">
                 <div class="flex items-center justify-between mb-3">
-                  <div class="text-sm font-medium text-gray-900">全局限速</div>
-                  <div class="text-xs text-gray-500">单位：{{ speedUnitLabel }}（0 表示不限制）</div>
+                  <div class="text-sm font-medium text-slate-900">全局限速</div>
+                  <div class="text-xs text-slate-500">单位：{{ speedUnitLabel }}（0 表示不限制）</div>
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <label class="space-y-1">
-                    <span class="text-xs text-gray-500">下载</span>
+                    <span class="text-xs text-slate-500">下载</span>
                     <input v-model.number="transferForm.downloadKbps" type="number" min="0" class="input" />
                   </label>
                   <label class="space-y-1">
-                    <span class="text-xs text-gray-500">上传</span>
+                    <span class="text-xs text-slate-500">上传</span>
                     <input v-model.number="transferForm.uploadKbps" type="number" min="0" class="input" />
                   </label>
                 </div>
@@ -399,19 +411,19 @@ onMounted(() => {
 
               <div class="card p-4">
                 <div class="flex items-center justify-between mb-3">
-                  <div class="text-sm font-medium text-gray-900">备用限速（ALT）</div>
-                  <label class="inline-flex items-center gap-2 text-sm text-gray-700">
-                    <input v-model="transferForm.altEnabled" type="checkbox" class="rounded border-gray-300 text-blue-500 focus:ring-blue-500/20" />
+                  <div class="text-sm font-medium text-slate-900">备用限速（ALT）</div>
+                  <label class="inline-flex items-center gap-2 text-sm text-slate-700">
+                    <input v-model="transferForm.altEnabled" type="checkbox" class="rounded border-slate-300 text-blue-500 focus:ring-blue-500/20" />
                     启用
                   </label>
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <label class="space-y-1">
-                    <span class="text-xs text-gray-500">下载</span>
+                    <span class="text-xs text-slate-500">下载</span>
                     <input v-model.number="transferForm.altDownloadKbps" type="number" min="0" class="input" />
                   </label>
                   <label class="space-y-1">
-                    <span class="text-xs text-gray-500">上传</span>
+                    <span class="text-xs text-slate-500">上传</span>
                     <input v-model.number="transferForm.altUploadKbps" type="number" min="0" class="input" />
                   </label>
                 </div>
@@ -424,11 +436,11 @@ onMounted(() => {
                 <h3 class="text-sm font-medium mb-3">连接限制</h3>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <label class="space-y-1">
-                    <span class="text-xs text-gray-500">全局最大连接数</span>
+                    <span class="text-xs text-slate-500">全局最大连接数</span>
                     <input v-model.number="prefsForm.maxConnections" type="number" min="0" class="input" />
                   </label>
                   <label class="space-y-1">
-                    <span class="text-xs text-gray-500">单种子最大连接数</span>
+                    <span class="text-xs text-slate-500">单种子最大连接数</span>
                     <input v-model.number="prefsForm.maxConnectionsPerTorrent" type="number" min="0" class="input" />
                   </label>
                 </div>
@@ -447,7 +459,7 @@ onMounted(() => {
                     </span>
                   </label>
                   <label v-if="prefsForm.queueDownloadEnabled" class="space-y-1">
-                    <span class="text-xs text-gray-500">同时下载数</span>
+                    <span class="text-xs text-slate-500">同时下载数</span>
                     <input v-model.number="prefsForm.queueDownloadMax" type="number" min="1" class="input" />
                   </label>
                 </div>
@@ -471,10 +483,10 @@ onMounted(() => {
                       class="rounded"
                     />
                     <span class="text-sm">启用做种队列</span>
-                    <span v-if="capabilities?.hasSeparateSeedQueue === false" class="text-xs text-gray-500">（由全局队列开关控制）</span>
+                    <span v-if="capabilities?.hasSeparateSeedQueue === false" class="text-xs text-slate-500">（由全局队列开关控制）</span>
                   </label>
                   <label v-if="prefsForm.queueSeedEnabled" class="space-y-1">
-                    <span class="text-xs text-gray-500">同时做种数</span>
+                    <span class="text-xs text-slate-500">同时做种数</span>
                     <input v-model.number="prefsForm.queueSeedMax" type="number" min="1" class="input" />
                   </label>
                 </div>
@@ -491,7 +503,7 @@ onMounted(() => {
                     <span class="text-sm">随机端口</span>
                   </label>
                   <label v-if="!prefsForm.randomPort" class="space-y-1">
-                    <span class="text-xs text-gray-500">端口号（1-65535）</span>
+                    <span class="text-xs text-slate-500">端口号（1-65535）</span>
                     <input v-model.number="prefsForm.listenPort" type="number" min="1" max="65535" class="input" />
                   </label>
                   <label class="flex items-center gap-2">
@@ -554,7 +566,7 @@ onMounted(() => {
         </div>
 
         <!-- 底部操作栏 -->
-        <div class="border-t border-gray-200 p-4 bg-gray-50 flex justify-end gap-2">
+        <div class="border-t border-slate-200 p-4 bg-slate-50 flex justify-end gap-2">
           <button class="btn" :disabled="saving" @click="emit('close')">取消</button>
           <button class="btn btn-primary" :disabled="saving || loading || !isDirty" @click="save">
             <span v-if="saving">保存中...</span>

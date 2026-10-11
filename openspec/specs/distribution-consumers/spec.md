@@ -1,7 +1,7 @@
 # distribution-consumers Specification
 
 ## Purpose
-TBD - created by archiving change harden-distribution-contract. Update Purpose after archive.
+约束 Loader 与 Sidecar 如何解析、校验并消费发布产物（latest.json / manifest.json / dist.zip），保证多分发形态共用同一条可信更新链。
 ## Requirements
 ### Requirement: Loader SHALL resolve release sources and pinned versions deterministically
 `Loader` SHALL apply a deterministic precedence order when selecting both the release source URL and the pinned version so that users, administrators, and query parameters can predictably override one another.

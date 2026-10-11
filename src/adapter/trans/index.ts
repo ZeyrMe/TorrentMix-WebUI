@@ -1063,7 +1063,12 @@ export class TransAdapter implements BaseAdapter {
       const session = await this.rpcCall<Record<string, unknown>>('session-get')
       this.updateSessionInfo(session)
       this.speedBytesState = 'ready'
-      saveTransSessionAuth(user, pass)
+      const persistence = await saveTransSessionAuth(user, pass)
+      if (persistence === 'memory-only' && (user || pass)) {
+        throw new Error(
+          '当前环境无法保存 Transmission 凭据。请使用 HTTPS，或在可信内网设置 VITE_SECURE_CREDENTIAL_STORAGE=false。',
+        )
+      }
     } catch (error) {
       clearTransSessionAuth()
       throw error

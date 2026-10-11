@@ -86,13 +86,13 @@
     @apply w-1 h-1;
   }
   ::-webkit-scrollbar-track {
-    @apply bg-gray-100;
+    @apply bg-slate-100;
   }
   ::-webkit-scrollbar-thumb {
-    @apply bg-gray-300 rounded-full;
+    @apply bg-slate-300 rounded-full;
   }
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-gray-400;
+    @apply bg-slate-400;
   }
 }
 
@@ -162,7 +162,7 @@
 
   .icon-btn-primary {
     @apply bg-black text-white border-black;
-    @apply hover:bg-gray-800 hover:border-gray-800;
+    @apply hover:bg-slate-800 hover:border-slate-800;
   }
 
   .icon-btn-danger {
@@ -171,15 +171,15 @@
   }
 
   .toolbar-divider {
-    @apply w-px h-8 bg-gray-200;
+    @apply w-px h-8 bg-slate-200;
   }
 
   .toolbar-group {
-    @apply inline-flex items-center gap-0 rounded-xl bg-gray-50/80 p-1;
+    @apply inline-flex items-center gap-0 rounded-xl bg-slate-50/80 p-1;
   }
 
   .toolbar-group-sep {
-    @apply w-px h-4 bg-gray-200 mx-1 self-center;
+    @apply w-px h-4 bg-slate-200 mx-1 self-center;
   }
   
   .btn-primary {
@@ -245,7 +245,7 @@
   
   /* 进度条 */
   .progress-bar {
-    @apply h-1.5 bg-gray-200 rounded-full overflow-hidden;
+    @apply h-1.5 bg-slate-200 rounded-full overflow-hidden;
   }
   
   .progress-fill {

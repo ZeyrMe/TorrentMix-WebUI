@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import Icon from '@/components/Icon.vue'
+import { useModalKeyboard } from '@/composables/useModalKeyboard'
+import Spinner from '@/components/ui/Spinner.vue'
 
 type BackendType = 'qbit' | 'trans'
 
@@ -36,6 +38,9 @@ interface Emits {
 
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
+
+const panelRef = ref<HTMLElement | null>(null)
+useModalKeyboard(panelRef, () => emit('close'), computed(() => props.open))
 
 const loading = ref(false)
 const saving = ref(false)
@@ -193,26 +198,31 @@ async function save() {
       class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
       @click.self="emit('close')"
     >
-      <div class="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[calc(100vh-2rem)] overflow-hidden flex flex-col">
-        <div class="px-4 py-3 sm:px-6 sm:py-4 border-b border-gray-200 flex items-center justify-between">
-          <h2 class="text-lg font-semibold text-gray-900">服务器配置（Standalone）</h2>
+      <div
+        ref="panelRef"
+        tabindex="-1"
+        role="dialog"
+        aria-modal="true"
+        aria-label="服务器配置"
+        class="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[calc(100vh-2rem)] overflow-hidden flex flex-col outline-none"
+      >
+        <div class="px-4 py-3 sm:px-6 sm:py-4 border-b border-slate-200 flex items-center justify-between">
+          <h2 class="text-lg font-semibold text-slate-900">服务器配置（Standalone）</h2>
           <button class="icon-btn" title="关闭" @click="emit('close')">
             <Icon name="x" :size="16" />
           </button>
         </div>
 
         <div class="flex-1 overflow-auto p-4 sm:p-6 space-y-4">
-          <div class="text-xs text-gray-500">
+          <div class="text-xs text-slate-500">
             说明：密码不会回显；留空表示“保持不变”。保存后会刷新页面以重新探测后端。
           </div>
 
-          <div v-if="loading" class="text-sm text-gray-500">
-            加载中…
-          </div>
+          <Spinner v-if="loading" />
 
           <template v-else>
             <div class="flex items-center justify-between gap-2">
-              <div class="text-sm font-medium text-gray-700">Servers</div>
+              <div class="text-sm font-medium text-slate-700">Servers</div>
               <button class="btn" @click="addServer">
                 <Icon name="plus" :size="16" class="mr-1" />
                 新增
@@ -223,10 +233,10 @@ async function save() {
               <div
                 v-for="s in servers"
                 :key="s.uid"
-                class="border border-gray-200 rounded-xl p-3 sm:p-4"
+                class="border border-slate-200 rounded-xl p-3 sm:p-4"
               >
                 <div class="flex items-center justify-between gap-2">
-                  <label class="text-sm font-medium text-gray-800 flex items-center gap-2">
+                  <label class="text-sm font-medium text-slate-800 flex items-center gap-2">
                     <input
                       type="radio"
                       name="defaultServer"
@@ -249,36 +259,36 @@ async function save() {
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
                   <div>
-                    <div class="text-xs font-medium text-gray-500 mb-1">ID</div>
+                    <div class="text-xs font-medium text-slate-500 mb-1">ID</div>
                     <input v-model="s.id" class="input" placeholder="例如 home-qb" />
                   </div>
                   <div>
-                    <div class="text-xs font-medium text-gray-500 mb-1">Name</div>
+                    <div class="text-xs font-medium text-slate-500 mb-1">Name</div>
                     <input v-model="s.name" class="input" placeholder="展示名（可选）" />
                   </div>
 
                   <div>
-                    <div class="text-xs font-medium text-gray-500 mb-1">Type</div>
+                    <div class="text-xs font-medium text-slate-500 mb-1">Type</div>
                     <select v-model="s.type" class="input">
                       <option value="qbit">qBittorrent</option>
                       <option value="trans">Transmission</option>
                     </select>
                   </div>
                   <div>
-                    <div class="text-xs font-medium text-gray-500 mb-1">Base URL</div>
+                    <div class="text-xs font-medium text-slate-500 mb-1">Base URL</div>
                     <input v-model="s.baseUrl" class="input" placeholder="例如 http://qb:8080" />
                   </div>
 
                   <div>
-                    <div class="text-xs font-medium text-gray-500 mb-1">Username</div>
+                    <div class="text-xs font-medium text-slate-500 mb-1">Username</div>
                     <input v-model="s.username" class="input" placeholder="可选（TR 允许为空）" />
                   </div>
                   <div>
-                    <div class="text-xs font-medium text-gray-500 mb-1 flex items-center justify-between">
+                    <div class="text-xs font-medium text-slate-500 mb-1 flex items-center justify-between">
                       <span>Password</span>
                       <button
                         v-if="s.hasPassword"
-                        class="text-xs text-gray-500 hover:text-gray-800"
+                        class="text-xs text-slate-500 hover:text-slate-800"
                         type="button"
                         @click="clearPassword(s)"
                       >
@@ -301,7 +311,7 @@ async function save() {
               {{ errorText }}
             </div>
 
-            <div class="pt-4 border-t border-gray-200 flex items-center justify-end gap-2">
+            <div class="pt-4 border-t border-slate-200 flex items-center justify-end gap-2">
               <button class="btn" :disabled="saving" @click="emit('close')">取消</button>
               <button class="btn btn-primary" :disabled="saving" @click="save">
                 <Icon v-if="saving" name="loader-2" :size="16" class="mr-1 animate-spin" />

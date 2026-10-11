@@ -62,7 +62,7 @@ const incompleteSuffix = computed(() => (backendLabel.value === 'Transmission' ?
     <div v-if="capabilities.hasDefaultSavePath" class="card p-4">
       <h3 class="text-sm font-medium mb-3">默认保存路径</h3>
       <label class="space-y-1">
-        <span class="text-xs text-gray-500">所有新种子默认保存到此目录（建议使用绝对路径）</span>
+        <span class="text-xs text-slate-500">所有新种子默认保存到此目录（建议使用绝对路径）</span>
         <input
           v-model="savePath"
           type="text"
@@ -84,7 +84,7 @@ const incompleteSuffix = computed(() => (backendLabel.value === 'Transmission' ?
         </label>
       </div>
       <label v-if="incompleteDirEnabled" class="space-y-1">
-        <span class="text-xs text-gray-500">未下载完的文件将保存到此目录</span>
+        <span class="text-xs text-slate-500">未下载完的文件将保存到此目录</span>
         <input
           v-model="incompleteDir"
           type="text"
@@ -106,7 +106,7 @@ const incompleteSuffix = computed(() => (backendLabel.value === 'Transmission' ?
         <input v-model="createSubfolderEnabled" type="checkbox" class="rounded" />
         <span class="text-sm">添加种子时创建子文件夹</span>
       </label>
-      <p class="text-xs text-gray-500 mt-2">适合多文件种子，避免文件直接散落在默认保存路径下。</p>
+      <p class="text-xs text-slate-500 mt-2">适合多文件种子，避免文件直接散落在默认保存路径下。</p>
     </div>
 
     <!-- 未完成文件后缀 -->
@@ -116,7 +116,7 @@ const incompleteSuffix = computed(() => (backendLabel.value === 'Transmission' ?
         <input v-model="incompleteFilesSuffix" type="checkbox" class="rounded" />
         <span class="text-sm">给未完成文件添加后缀</span>
       </label>
-      <p class="text-xs text-gray-500 mt-2">
+      <p class="text-xs text-slate-500 mt-2">
         {{ backendLabel }} 将在未完成文件末尾追加 <span class="font-mono">{{ incompleteSuffix }}</span>
       </p>
     </div>

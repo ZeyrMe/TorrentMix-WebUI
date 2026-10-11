@@ -2,8 +2,9 @@
 import { computed } from 'vue'
 import type { UnifiedTorrent } from '@/adapter/types'
 import type { ColumnState } from '@/composables/useTableColumns/types'
-import { formatBytes, formatSpeed } from '@/utils/format'
+import { formatBytes, formatSpeed, formatEta } from '@/utils/format'
 import { getSwarmTexts, getSwarmTitle } from '@/utils/swarm'
+import { getStateMeta } from '@/utils/torrentState'
 import Icon from '@/components/Icon.vue'
 import SafeText from '@/components/SafeText.vue'
 
@@ -86,41 +87,7 @@ function handleRowKeydown(e: KeyboardEvent) {
   emit('click', e)
 }
 
-type TorrentState = UnifiedTorrent['state']
-
-// 状态图标映射
-const getStateIcon = (state: TorrentState): { name: string; color: 'blue' | 'cyan' | 'gray' | 'orange' | 'purple' | 'red' } => {
-  const icons: Record<TorrentState, { name: string; color: 'blue' | 'cyan' | 'gray' | 'orange' | 'purple' | 'red' }> = {
-    downloading: { name: 'download', color: 'blue' },
-    seeding: { name: 'upload-cloud', color: 'cyan' },
-    paused: { name: 'pause-circle', color: 'gray' },
-    queued: { name: 'clock', color: 'orange' },
-    checking: { name: 'refresh-cw', color: 'purple' },
-    error: { name: 'alert-circle', color: 'red' }
-  }
-  return icons[state]
-}
-
-// 格式化ETA
-const formatETA = (eta: number, progress: number, state: TorrentState): string => {
-  // 已完成或错误状态显示无限
-  if (progress >= 1.0 || state === 'error') return '∞'
-
-  // 无限时间判断：-1、负数、非数值、或超过1年
-  if (eta === -1 || eta <= 0 || !isFinite(eta) || eta >= 86400 * 365) return '∞'
-
-  const seconds = Math.floor(eta)
-  if (seconds < 60) return `${seconds}秒`
-
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}分`
-
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}小时`
-
-  const days = Math.floor(hours / 24)
-  return `${days}天`
-}
+const swarmTexts = computed(() => getSwarmTexts(props.torrent))
 
 const categoryMetaText = computed(() => {
   const raw = props.torrent.category ?? ''
@@ -154,7 +121,7 @@ const categoryMetaTitle = computed(() => `分类 ${categoryMetaText.value}`)
         :checked="selected"
         @click="handleCheckboxClick"
         :aria-label="`选择种子 ${torrent.name}`"
-        class="w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500/20 focus:ring-offset-0 focus:ring-2 cursor-pointer transition-all duration-150"
+        class="w-4 h-4 rounded border-slate-300 text-blue-500 focus:ring-blue-500/20 focus:ring-offset-0 focus:ring-2 cursor-pointer transition-all duration-150"
       />
     </div>
 
@@ -167,17 +134,17 @@ const categoryMetaTitle = computed(() => `分类 ${categoryMetaText.value}`)
       <div class="flex items-center gap-3">
         <!-- 状态图标 -->
         <div class="flex-shrink-0">
-          <Icon :name="getStateIcon(torrent.state).name" :color="getStateIcon(torrent.state).color" :size="16" />
+          <Icon :name="getStateMeta(torrent.state).icon" :color="getStateMeta(torrent.state).color" :size="16" />
         </div>
 
         <!-- 名称与基本信息 -->
         <div class="min-w-0 flex-1">
           <SafeText
             as="div"
-            class="font-medium text-gray-900 truncate text-sm leading-5"
+            class="font-medium text-slate-900 truncate text-sm leading-5"
             :text="torrent.name"
           />
-          <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500 mt-0.5">
+          <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 mt-0.5">
             <span class="font-mono font-tabular">{{ formatBytes(torrent.size) }}</span>
             <span
               v-if="showCategoryMeta"
@@ -188,7 +155,7 @@ const categoryMetaTitle = computed(() => `分类 ${categoryMetaText.value}`)
             </span>
             <span class="hidden sm:inline">比率 {{ torrent.ratio.toFixed(2) }}</span>
             <span class="hidden md:inline" :title="getSwarmTitle(torrent)">
-              做种 {{ getSwarmTexts(torrent).seeds }} 下载 {{ getSwarmTexts(torrent).peers }}
+              做种 {{ swarmTexts.seeds }} 下载 {{ swarmTexts.peers }}
             </span>
           </div>
         </div>
@@ -203,10 +170,10 @@ const categoryMetaTitle = computed(() => `分类 ${categoryMetaText.value}`)
     >
       <div class="space-y-1">
         <div class="flex items-center justify-between">
-          <span class="text-xs font-mono font-tabular text-gray-600">
+          <span class="text-xs font-mono font-tabular text-slate-600">
             {{ (torrent.progress * 100).toFixed(1) }}%
           </span>
-          <span class="text-xs text-gray-500">
+          <span class="text-xs text-slate-500">
             {{ formatBytes(torrent.size * torrent.progress) }}
           </span>
         </div>
@@ -216,7 +183,7 @@ const categoryMetaTitle = computed(() => `分类 ${categoryMetaText.value}`)
             :class="{
               'bg-cyan-500': torrent.progress >= 1,
               'bg-blue-500': torrent.progress > 0 && torrent.progress < 1,
-              'bg-gray-300': torrent.progress === 0
+              'bg-slate-300': torrent.progress === 0
             }"
             :style="{ width: `${Math.max(torrent.progress * 100, 2)}%` }"
           />
@@ -230,7 +197,7 @@ const categoryMetaTitle = computed(() => `分类 ${categoryMetaText.value}`)
       :style="getFlexStyle('dlSpeed')"
       v-show="columnById['dlSpeed']?.visible ?? true"
     >
-      <div class="text-sm font-mono font-tabular text-gray-900 whitespace-nowrap">
+      <div class="text-sm font-mono font-tabular text-slate-900 whitespace-nowrap">
         ↓ {{ formatSpeed(torrent.dlspeed) }}
       </div>
     </div>
@@ -242,7 +209,7 @@ const categoryMetaTitle = computed(() => `分类 ${categoryMetaText.value}`)
       :style="getFlexStyle('upSpeed')"
       v-show="columnById['upSpeed']?.visible ?? true"
     >
-      <div class="text-sm font-mono font-tabular text-gray-900 whitespace-nowrap">
+      <div class="text-sm font-mono font-tabular text-slate-900 whitespace-nowrap">
         ↑ {{ formatSpeed(torrent.upspeed) }}
       </div>
     </div>
@@ -254,8 +221,8 @@ const categoryMetaTitle = computed(() => `分类 ${categoryMetaText.value}`)
       :style="getFlexStyle('eta')"
       v-show="columnById['eta']?.visible ?? true"
     >
-      <div class="text-sm font-mono font-tabular text-gray-600">
-        {{ formatETA(torrent.eta, torrent.progress, torrent.state) }}
+      <div class="text-sm font-mono font-tabular text-slate-600">
+        {{ formatEta(torrent.eta, torrent.progress, torrent.state) }}
       </div>
     </div>
 
@@ -270,7 +237,7 @@ const categoryMetaTitle = computed(() => `分类 ${categoryMetaText.value}`)
         <button
           type="button"
           @click.stop="emit('action', torrent.state === 'paused' ? 'resume' : 'pause', torrent.id)"
-          class="p-1 hover:bg-gray-100 rounded"
+          class="p-1 hover:bg-slate-100 rounded"
           :title="torrent.state === 'paused' ? '开始' : '暂停'"
           :aria-label="torrent.state === 'paused' ? '开始种子' : '暂停种子'"
         >

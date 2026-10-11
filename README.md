@@ -33,10 +33,10 @@ The core goal is simple: **don't make deployment a pain**. The repo ships four d
 | Layer | Tech |
 |-------|------|
 | Framework | Vue 3 · TypeScript · Vite |
-| Styling | Tailwind CSS · Shadcn Vue |
+| Styling | Tailwind CSS (no component library — custom lightweight components) |
 | State | Pinia · `shallowRef<Map>` for high-throughput storage |
 | Network | Axios · custom interceptors |
-| Performance | @tanstack/vue-virtual · Fuse.js |
+| Performance | @tanstack/vue-virtual |
 
 ## Getting Started
 

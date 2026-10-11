@@ -233,7 +233,7 @@ onUnmounted(() => {
     >
       <div
         v-if="show"
-        class="fixed z-50 bg-white rounded-lg shadow-xl border border-gray-200 py-1 min-w-[180px] max-h-[60vh] overflow-y-auto"
+        class="fixed z-50 bg-white rounded-lg shadow-xl border border-slate-200 py-1 min-w-[180px] max-h-[60vh] overflow-y-auto"
         :style="{
           left: `${menuPosition.left}px`,
           top: `${menuPosition.top}px`
@@ -241,14 +241,14 @@ onUnmounted(() => {
         @click.stop
       >
         <template v-for="item in menuItems" :key="item.id">
-          <div v-if="item.type === 'divider'" class="my-1 border-t border-gray-200" />
+          <div v-if="item.type === 'divider'" class="my-1 border-t border-slate-200" />
           <button
             v-else
             @click="item.action()"
             :class="`w-full px-4 py-2 text-left text-sm flex items-center gap-3 ${
               item.danger
                 ? 'text-red-600 hover:bg-red-50'
-                : 'text-gray-700 hover:bg-gray-50'
+                : 'text-slate-700 hover:bg-slate-50'
             } ${item.disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`"
             :disabled="item.disabled"
           >
