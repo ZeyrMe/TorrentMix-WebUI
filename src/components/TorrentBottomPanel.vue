@@ -7,7 +7,7 @@ import { useUiOverlay } from '@/composables/useUiOverlay'
 import type { DashboardDetailTab } from '@/utils/dashboardRouteState'
 import Icon from '@/components/Icon.vue'
 import SafeText from '@/components/SafeText.vue'
-import { formatBytes, formatSpeed } from '@/utils/format'
+import { formatBytes, formatEta, formatSpeed } from '@/utils/format'
 import { getStateMeta } from '@/utils/torrentState'
 import { useDragResize } from '@/composables/useDragResize'
 import { useTableColumns } from '@/composables/useTableColumns'
@@ -386,28 +386,6 @@ function formatTotalPeers(torrent: UnifiedTorrent): string {
   const hasPeers = torrent.numPeers !== undefined && torrent.numPeers !== null
   if (!hasSeeds && !hasPeers) return '--'
   return String((torrent.numSeeds ?? 0) + (torrent.numPeers ?? 0))
-}
-
-// ETA格式化
-function formatETA(eta: number): string {
-  // 无限时间判断：-1、负数、非数值、或超过1年
-  if (eta === -1 || eta <= 0 || !isFinite(eta) || eta >= 86400 * 365) return '∞'
-
-  const seconds = Math.floor(eta)
-  if (seconds < 60) return `${seconds}秒`
-
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}分钟`
-
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}小时`
-
-  const days = Math.floor(hours / 24)
-  const remainingHours = hours % 24
-  if (remainingHours > 0) {
-    return `${days}天${remainingHours}小时`
-  }
-  return `${days}天`
 }
 
 // Tracker 状态映射
@@ -1492,7 +1470,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
                 </div>
                 <div class="flex justify-between">
                   <span class="text-slate-600">剩余时间</span>
-                  <span class="font-mono font-medium">{{ torrent.eta ? formatETA(torrent.eta) : '∞' }}</span>
+                  <span class="font-mono font-medium">{{ formatEta(torrent.eta, torrent.progress, torrent.state) }}</span>
                 </div>
               </div>
             </div>

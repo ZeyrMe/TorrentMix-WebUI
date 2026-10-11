@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process'
 import vm from 'node:vm'
 import { fileURLToPath } from 'node:url'
 
-import { formatBytes, formatSpeed, formatDuration } from '../src/utils/format.ts'
+import { formatBytes, formatEta, formatSpeed, formatDuration } from '../src/utils/format.ts'
 import {
   buildLatestMetadata,
   buildManifest,
@@ -181,6 +181,13 @@ test('format: formatSpeed should not append /s for invalid bytes', () => {
   assert.equal(formatSpeed(0), '0 B/s')
   assert.equal(formatSpeed(1024), '1.0 KB/s')
   assert.equal(formatSpeed(Number.NaN), '--')
+})
+
+test('format: formatEta treats qBittorrent infinity sentinel as infinite', () => {
+  assert.equal(formatEta(8640000, 0.5, 'downloading'), '∞')
+  assert.equal(formatEta(-1, 0.5, 'downloading'), '∞')
+  assert.equal(formatEta(8640000 - 1, 0.5, 'downloading'), '99天')
+  assert.equal(formatEta(3600, 1, 'seeding'), '∞')
 })
 
 test('format: formatDuration should be stable for invalid/negative seconds', () => {

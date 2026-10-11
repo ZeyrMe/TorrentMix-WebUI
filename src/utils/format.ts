@@ -24,8 +24,8 @@ export function formatEta(eta: number, progress: number, state: string): string 
   // 已完成或错误状态显示无限
   if (progress >= 1.0 || state === 'error') return '∞'
 
-  // 无限时间判断：-1、负数、非数值、或超过1年
-  if (eta === -1 || eta <= 0 || !isFinite(eta) || eta >= 86400 * 365) return '∞'
+  // qBittorrent 用 -1 或 >= 100 天（8640000 秒）表示无限 ETA。
+  if (eta === -1 || eta <= 0 || !isFinite(eta) || eta >= 8640000) return '∞'
 
   const seconds = Math.floor(eta)
   if (seconds < 60) return `${seconds}秒`
