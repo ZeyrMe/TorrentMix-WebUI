@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy"
+      content="default-src 'self';
+               script-src 'self' 'unsafe-inline' https:;
+               style-src 'self' 'unsafe-inline' https:;
+               img-src 'self' data:;
+               connect-src 'self' https:;
+               font-src 'self' data:;">
+    <title>Torrent WebUI Loader</title>
+    <style>
+      :root { color-scheme: light; }
+      body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background: #fafafa; color: #111827; }
+      .wrap { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+      .card { width: min(720px, 100%); background: #fff; border: 1px solid #e5e7eb; border-radius: 16px; box-shadow: 0 1px 2px rgba(0,0,0,.04); padding: 18px; }
+      h1 { font-size: 18px; margin: 0 0 8px; }
+      p { margin: 8px 0; color: #4b5563; font-size: 14px; line-height: 1.5; }
+      code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; background: #f3f4f6; padding: 2px 6px; border-radius: 6px; }
+      .row { display: flex; gap: 8px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+      input { flex: 1 1 360px; min-width: 240px; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 10px; font-size: 14px; }
+      button { padding: 10px 12px; border-radius: 10px; border: 1px solid #111827; background: #111827; color: #fff; font-weight: 600; cursor: pointer; }
+      button.secondary { background: #fff; color: #111827; }
+      .status { margin-top: 10px; font-size: 13px; color: #374151; }
+      .warn { margin-top: 10px; padding: 10px 12px; background: #fffbeb; border: 1px solid #f59e0b33; border-radius: 12px; color: #92400e; font-size: 13px; }
+      .err { margin-top: 10px; padding: 10px 12px; background: #fef2f2; border: 1px solid #ef444433; border-radius: 12px; color: #991b1b; font-size: 13px; white-space: pre-wrap; }
+      a { color: #111827; }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div class="wrap">
+        <div class="card">
+          <h1>WebUI Loader</h1>
+          <p>用途：把这一页当作 <code>index.html</code> 放到 qBittorrent/Transmission 的 WebUI 目录里；它会从远端 <code>latest.json</code> 读取版本，再按 <code>manifest.json</code> 从 CDN 加载 JS/CSS（页面保持同源，后端 API 仍访问当前域名）。</p>
+          <div class="warn">
+            安全提示：启用“远端更新”本质是在信任远端脚本。建议使用自建域名/私有源，并配合完整 HTTPS、严格 CSP、以及可审计的发布流程。
+          </div>
+
+          <div class="row">
+            <input id="manifestUrl" placeholder="latest.json URL（例如 https://YOUR.DOMAIN/latest.json）" />
+            <button id="saveBtn" class="secondary" type="button">保存</button>
+            <button id="loadBtn" type="button">加载</button>
+          </div>
+
+          <div class="row">
+            <input id="pinVersion" placeholder="固定版本（例如 0.1.0，可留空）" />
+            <button id="pinBtn" class="secondary" type="button">固定</button>
+            <button id="unpinBtn" class="secondary" type="button">解除</button>
+          </div>
+
+          <div class="status" id="status">状态：等待配置</div>
+          <div class="err" id="error" style="display:none"></div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      const STORAGE_KEY = 'torrent-webui:latest-url'
+      const PIN_KEY = 'torrent-webui:pinned-version'
+      const CACHE_KEY = 'torrent-webui:cached-manifest'
+      const RELOAD_ONCE_KEY = 'torrent-webui:reload-once'
+      const CONFIG_URL = './config.json'
+      const DEFAULT_CANDIDATES = ["https://ZeyrMe.github.io/TorrentMix-WebUI/latest.json","https://cdn.jsdelivr.net/gh/ZeyrMe/TorrentMix-WebUI@gh-pages/latest.json"]
+
+      const loaderNormalizePinnedVersion = function loaderNormalizePinnedVersion(ver) {
+  const raw = String(ver || '').trim()
+  if (!raw) return ''
+  const value = raw.startsWith('v') ? raw.slice(1) : raw
+  if (!/^[0-9A-Za-z][0-9A-Za-z._-]{0,63}$/.test(value)) return ''
+  return value
+}
+      const loaderResolvePinnedVersion = function loaderResolvePinnedVersion({ search = '', storedValue = '', configPinnedVersion = '' } = {}) {
+  const qs = new URLSearchParams(search)
+  return (
+    loaderNormalizePinnedVersion(qs.get('ver') || qs.get('version') || qs.get('tag') || '') ||
+    loaderNormalizePinnedVersion(storedValue) ||
+    loaderNormalizePinnedVersion(configPinnedVersion)
+  )
+}
+      const loaderDedupeStrings = function loaderDedupeStrings(list) {
+  const out = []
+  const seen = new Set()
+  for (const value of list) {
+    const item = String(value || '').trim()
+    if (!item || seen.has(item)) continue
+    seen.add(item)
+    out.push(item)
+  }
+  return out
+}
+      const loaderPickCandidates = function loaderPickCandidates({
+  search = '',
+  inputValue = '',
+  savedValue = '',
+  configLatestUrl = '',
+  configCandidates = [],
+  defaultCandidates = [],
+} = {}) {
+  const qs = new URLSearchParams(search)
+  const fromQuery = qs.get('latest') || qs.get('manifest') || ''
+  const defaults = ['./latest.json']
+
+  return loaderDedupeStrings([
+    fromQuery,
+    inputValue,
+    savedValue,
+    configLatestUrl,
+    ...(Array.isArray(configCandidates) ? configCandidates : []),
+    ...(Array.isArray(defaultCandidates) ? defaultCandidates : []),
+    ...defaults,
+  ])
+}
+      const loaderResolveManifest = async function loaderResolveManifest({ latestUrlOrManifestUrl, pinnedVersion = '', locationHref, fetchJson }) {
+  const url = new URL(latestUrlOrManifestUrl, locationHref)
+
+  if (pinnedVersion) {
+    if (url.pathname.toLowerCase().endsWith('manifest.json')) {
+      const manifest = await fetchJson(url.toString())
+      return { manifest, manifestUrl: url.toString() }
+    }
+
+    const manifestUrl = new URL(`releases/${pinnedVersion}/manifest.json`, url).toString()
+    const manifest = await fetchJson(manifestUrl)
+    return { manifest, manifestUrl }
+  }
+
+  const data = await fetchJson(url.toString())
+  if (data && data.files && data.entry) {
+    return { manifest: data, manifestUrl: url.toString() }
+  }
+
+  const releasePath = loaderNormalizeAssetPath(String(data?.release?.path || ''))
+  const manifestRel = loaderNormalizeAssetPath(String(data?.release?.manifest || 'manifest.json'))
+  const base = releasePath
+    ? new URL(releasePath.replace(/\/+$/, '') + '/', url).toString()
+    : url.toString().replace(/[^/]*$/, '')
+  const manifestUrl = new URL(manifestRel, base).toString()
+  const manifest = await fetchJson(manifestUrl)
+  return { manifest, manifestUrl }
+}
+      const loaderNormalizeAssetPath = function loaderNormalizeAssetPath(value) {
+  let normalized = String(value || '').trim()
+  while (normalized.startsWith('/')) normalized = normalized.slice(1)
+  if (normalized.startsWith('./')) normalized = normalized.slice(2)
+  return normalized
+}
+      const loaderFileMap = function loaderFileMap(manifest) {
+  const map = new Map()
+  for (const file of manifest?.files || []) {
+    if (file?.path) map.set(String(file.path), file)
+  }
+  return map
+}
+      const loaderLoadAssets = function loaderLoadAssets({ document, manifestUrl, manifest }) {
+  const base = manifestUrl.replace(/[^/]*$/, '')
+  const entry = manifest?.entry || {}
+  const jsList = Array.isArray(entry.js) ? entry.js : (entry.js ? [entry.js] : [])
+  const cssList = Array.isArray(entry.css) ? entry.css : (entry.css ? [entry.css] : [])
+  const files = loaderFileMap(manifest)
+
+  for (const href0 of cssList) {
+    const rel = loaderNormalizeAssetPath(href0)
+    const href = new URL(rel, base).toString()
+    const link = document.createElement('link')
+    link.rel = 'stylesheet'
+    link.href = href
+    const meta = files.get(rel)
+    if (meta?.integrity) {
+      link.integrity = String(meta.integrity)
+      link.crossOrigin = 'anonymous'
+    }
+    document.head.appendChild(link)
+  }
+
+  for (const src0 of jsList) {
+    const rel = loaderNormalizeAssetPath(src0)
+    const src = new URL(rel, base).toString()
+    const script = document.createElement('script')
+    script.type = 'module'
+    script.src = src
+    const meta = files.get(rel)
+    if (meta?.integrity) {
+      script.integrity = String(meta.integrity)
+      script.crossOrigin = 'anonymous'
+    }
+    document.head.appendChild(script)
+  }
+}
+
+      const els = {
+        input: document.getElementById('manifestUrl'),
+        save: document.getElementById('saveBtn'),
+        load: document.getElementById('loadBtn'),
+        pin: document.getElementById('pinVersion'),
+        pinBtn: document.getElementById('pinBtn'),
+        unpinBtn: document.getElementById('unpinBtn'),
+        status: document.getElementById('status'),
+        error: document.getElementById('error'),
+      }
+
+      function setStatus(text) {
+        els.status.textContent = '状态：' + text
+      }
+
+      function setError(err) {
+        if (!err) {
+          els.error.style.display = 'none'
+          els.error.textContent = ''
+          return
+        }
+        els.error.style.display = 'block'
+        els.error.textContent = String(err)
+      }
+
+      async function fetchJson(url, timeoutMs = 3500) {
+        const controller = new AbortController()
+        const t = setTimeout(() => controller.abort(), timeoutMs)
+        try {
+          const res = await fetch(url, { cache: 'no-store', signal: controller.signal })
+          if (!res.ok) throw new Error('HTTP ' + res.status + ' ' + res.statusText)
+          return await res.json()
+        } finally {
+          clearTimeout(t)
+        }
+      }
+
+      async function tryLoadConfig() {
+        const u = new URL(CONFIG_URL, location.href)
+        try {
+          const data = await fetchJson(u.toString(), 300)
+          if (!data || typeof data !== 'object') return null
+          return data
+        } catch {
+          return null
+        }
+      }
+
+      function readCachedManifest() {
+        try {
+          const raw = localStorage.getItem(CACHE_KEY)
+          if (!raw) return null
+          const data = JSON.parse(raw)
+          if (!data || typeof data !== 'object') return null
+          if (!data.manifestUrl || !data.manifest) return null
+          return data
+        } catch {
+          return null
+        }
+      }
+
+      function writeCachedManifest(manifestUrl, manifest) {
+        try {
+          const payload = {
+            version: String(manifest?.version || ''),
+            manifestUrl: String(manifestUrl || ''),
+            manifest,
+            savedAt: new Date().toISOString(),
+          }
+          localStorage.setItem(CACHE_KEY, JSON.stringify(payload))
+        } catch {}
+      }
+
+      function pickCandidates(config) {
+        return loaderPickCandidates({
+          search: location.search,
+          inputValue: String(els.input?.value || ''),
+          savedValue: String(localStorage.getItem(STORAGE_KEY) || ''),
+          configLatestUrl: String(config?.latestUrl || ''),
+          configCandidates: Array.isArray(config?.candidates) ? config.candidates : [],
+          defaultCandidates: DEFAULT_CANDIDATES,
+        })
+      }
+
+      function resolveManifest(latestUrlOrManifestUrl, pinnedVersion) {
+        return loaderResolveManifest({
+          latestUrlOrManifestUrl,
+          pinnedVersion,
+          locationHref: location.href,
+          fetchJson,
+        })
+      }
+
+      function loadAssets(manifestUrl, manifest) {
+        return loaderLoadAssets({ document, manifestUrl, manifest })
+      }
+
+      async function tryBoot() {
+        setError('')
+
+        const qs = new URLSearchParams(location.search)
+        const config = await tryLoadConfig()
+        if (config?.latestUrl && !localStorage.getItem(STORAGE_KEY) && !(qs.get('latest') || qs.get('manifest'))) {
+          els.input.value = String(config.latestUrl || '').trim()
+        }
+        if (config?.pinnedVersion && !localStorage.getItem(PIN_KEY)) {
+          els.pin.value = loaderNormalizePinnedVersion(config.pinnedVersion)
+        }
+
+        const pinnedVersion = loaderResolvePinnedVersion({
+          search: location.search,
+          storedValue: localStorage.getItem(PIN_KEY) || '',
+          configPinnedVersion: config?.pinnedVersion || '',
+        })
+
+        const candidates = pickCandidates(config)
+        if (candidates.length === 0) {
+          setStatus('未配置 latest.json；请手动填写并保存')
+          return
+        }
+
+        if (pinnedVersion) {
+          setStatus('固定版本：' + pinnedVersion + '（探测 CDN）…')
+        }
+
+        if (!pinnedVersion) {
+          const cached = readCachedManifest()
+          if (cached?.manifestUrl && cached?.manifest) {
+            const cachedVersion = String(cached.version || cached.manifest?.version || 'unknown')
+            setStatus('离线缓存启动：' + cachedVersion)
+            loadAssets(String(cached.manifestUrl), cached.manifest)
+
+            void (async () => {
+              if (sessionStorage.getItem(RELOAD_ONCE_KEY)) return
+              try {
+                for (const url of candidates) {
+                  try {
+                    const { manifest, manifestUrl } = await resolveManifest(url, '')
+                    const nextVersion = String(manifest?.version || 'unknown')
+                    writeCachedManifest(manifestUrl, manifest)
+                    if (nextVersion && cachedVersion && nextVersion !== cachedVersion) {
+                      sessionStorage.setItem(RELOAD_ONCE_KEY, '1')
+                      location.reload()
+                    }
+                    return
+                  } catch {}
+                }
+              } catch {}
+            })()
+
+            return
+          }
+
+          setStatus('探测更新源…')
+        }
+
+        let lastErr = null
+        for (const url of candidates) {
+          try {
+            setStatus('读取：' + url)
+            const { manifest, manifestUrl } = await resolveManifest(url, pinnedVersion)
+            writeCachedManifest(manifestUrl, manifest)
+            setStatus('加载资源：' + (manifest?.version || pinnedVersion || 'unknown'))
+            loadAssets(manifestUrl, manifest)
+            return
+          } catch (error) {
+            lastErr = error
+          }
+        }
+
+        setStatus('启动失败')
+        setError(lastErr ? (lastErr?.stack || lastErr?.message || String(lastErr)) : 'unknown error')
+      }
+
+      function saveUrl() {
+        const v = String(els.input.value || '').trim()
+        if (!v) return
+        localStorage.setItem(STORAGE_KEY, v)
+        setStatus('已保存，点击“加载”尝试启动')
+      }
+
+      function pinVersion() {
+        const v = loaderNormalizePinnedVersion(els.pin.value || '')
+        if (!v) return
+        localStorage.setItem(PIN_KEY, v)
+        location.reload()
+      }
+
+      function unpinVersion() {
+        localStorage.removeItem(PIN_KEY)
+        els.pin.value = ''
+        location.reload()
+      }
+
+      els.input.value = String(localStorage.getItem(STORAGE_KEY) || DEFAULT_CANDIDATES[0] || '').trim()
+      els.pin.value = String(localStorage.getItem(PIN_KEY) || '').trim()
+      els.save.addEventListener('click', saveUrl)
+      els.load.addEventListener('click', tryBoot)
+      els.pinBtn.addEventListener('click', pinVersion)
+      els.unpinBtn.addEventListener('click', unpinVersion)
+
+      void tryBoot()
+    </script>
+  </body>
+</html>

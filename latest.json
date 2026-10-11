@@ -3,13 +3,13 @@
   "name": "torrentmix-core",
   "channel": "stable",
   "version": "0.1.0",
-  "commit": "2cf853f",
-  "builtAt": "2026-10-11T03:56:02.233Z",
+  "commit": "2a3df38",
+  "builtAt": "2026-10-11T04:10:46.104Z",
   "release": {
     "path": "releases/0.1.0/",
     "manifest": "manifest.json",
     "loader": "loader.html",
     "distZip": "releases/0.1.0/dist.zip",
-    "distZipSha256": "a8a377058f33eb97a546d1228d65972a1b75292e378bc35a38e3ec379ac9007e"
+    "distZipSha256": "e16a98037ece55c03c8f9607dfc9a9549a8bb176676ad2278b0069b35c965a6d"
   }
 }

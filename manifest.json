@@ -1,0 +1,67 @@
+{
+  "schema": 1,
+  "name": "torrentmix-core",
+  "channel": "stable",
+  "version": "0.1.0",
+  "commit": "2a3df38",
+  "builtAt": "2026-10-11T04:10:46.104Z",
+  "entry": {
+    "html": "index.html",
+    "js": [
+      "assets/index-OvZpiv70.js"
+    ],
+    "css": [
+      "assets/index-CgpX9Wwh.css"
+    ]
+  },
+  "files": [
+    {
+      "path": ".vite/manifest.json",
+      "size": 553,
+      "sha256": "68575a28ee447b71ef6ab5673fdb14f2c3409e84fdc8c421e2ba8c38e9c321fb",
+      "integrity": "sha256-aFdaKO5Ee3HvarVnP9sU8sNAnoT9yMQh4rqMOOnDIfs="
+    },
+    {
+      "path": "assets/index-CgpX9Wwh.css",
+      "size": 41863,
+      "sha256": "fe1d2923e4789627da8600af78077858326059168139f1047458c571fbf1ec6f",
+      "integrity": "sha256-/h0pI+R4lifahgCveAd4WDJgWRaBOfEEdFjFcfvx7G8="
+    },
+    {
+      "path": "assets/index-OvZpiv70.js",
+      "size": 490541,
+      "sha256": "24f0ca34fdef3996f7ce4426f89ba05d07d5ae165d450f76ca8c752e9f5a4d04",
+      "integrity": "sha256-JPDKNP3vOZb3zkQm+JugXQfVrhZdRQ92yox1Lp9aTQQ="
+    },
+    {
+      "path": "assets/inter-H_M6nIbt.ttf",
+      "size": 862936,
+      "sha256": "746431e950fd28d29b0189d708d4a5852a8458edb3184387eadcee9e5e34676c",
+      "integrity": "sha256-dGQx6VD9KNKbAYnXCNSlhSqEWO2zGEOH6tzunl40Z2w="
+    },
+    {
+      "path": "assets/jetbrains-mono-DgTxpPXt.ttf",
+      "size": 303144,
+      "sha256": "662a196d58f1183bf2d77428b6d5283fe3f45161ab021bea4036bc98e5cac016",
+      "integrity": "sha256-ZioZbVjxGDvy13QottUoP+P0UWGrAhvqQDa8mOXKwBY="
+    },
+    {
+      "path": "index.html",
+      "size": 1050,
+      "sha256": "fb93664042b4197fa745667ef0807938a7865453fb1a492c657f04740b645e6f",
+      "integrity": "sha256-+5NmQEK0GX+nRWZ+8IB5OKeGVFP7GkksZX8EdAtkXm8="
+    },
+    {
+      "path": "loader.html",
+      "size": 15592,
+      "sha256": "7cf068f4af902cf111411369851be3b8b76d217d73ff8c6fed42911d97b472d9",
+      "integrity": "sha256-fPBo9K+QLPERQRNphRvjuLdtIX1z/4xv7UKRHZe0ctk="
+    },
+    {
+      "path": "vite.svg",
+      "size": 1525,
+      "sha256": "402218a996d3d26756fc2c148cfadb1f96002c18434d7ba7663fc51d96a3446e",
+      "integrity": "sha256-QCIYqZbT0mdW/CwUjPrbH5YALBhDTXunZj/FHZajRG4="
+    }
+  ]
+}
