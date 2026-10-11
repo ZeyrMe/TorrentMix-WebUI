@@ -8,6 +8,7 @@ import type { DashboardDetailTab } from '@/utils/dashboardRouteState'
 import Icon from '@/components/Icon.vue'
 import SafeText from '@/components/SafeText.vue'
 import { formatBytes, formatSpeed } from '@/utils/format'
+import { getStateMeta } from '@/utils/torrentState'
 import { useDragResize } from '@/composables/useDragResize'
 import { useTableColumns } from '@/composables/useTableColumns'
 import { FILE_TABLE_COLUMNS, TRACKER_TABLE_COLUMNS, PEER_TABLE_COLUMNS } from '@/composables/useTableColumns/configs'
@@ -44,6 +45,7 @@ const mutating = ref(false)
 
 // 当前 Tab
 const activeTab = ref<DashboardDetailTab>(props.activeTab ?? 'overview')
+const stateMeta = computed(() => props.torrent ? getStateMeta(props.torrent.state) : null)
 
 function readOverlayValue(values: Record<string, string>, key: string) {
   return values[key] ?? ''
@@ -1238,7 +1240,7 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
   <!-- 底部详情面板 -->
   <div
     v-show="visible"
-    class="border-t border-slate-200 bg-white flex flex-col"
+    class="torrent-detail-panel border-t border-slate-200 bg-white flex flex-col"
     :style="panelStyle"
   >
     <!-- 顶部拖拽调整条 -->
@@ -1253,14 +1255,16 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
     </div>
 
     <!-- 面板头部 -->
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between px-4 py-3 border-b border-slate-200 bg-slate-50 flex-shrink-0">
-      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4 flex-1 min-w-0">
+    <div class="torrent-detail-header px-4 py-3 border-b border-slate-200 bg-slate-50 flex-shrink-0">
+      <div class="torrent-detail-info-row min-w-0">
         <!-- 种子基本信息 -->
-        <div class="flex items-center gap-3 flex-1 min-w-0">
+        <div class="torrent-detail-info flex items-center gap-3 min-w-0">
           <Icon
-            :name="torrent?.state === 'downloading' ? 'download' : 'upload-cloud'"
-            :color="torrent?.state === 'downloading' ? 'blue' : 'cyan'"
+            v-if="stateMeta"
+            :name="stateMeta.icon"
+            :color="stateMeta.color"
             :size="20"
+            class="shrink-0"
           />
           <div class="min-w-0 flex-1">
             <SafeText
@@ -1269,6 +1273,14 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
               :text="torrent?.name || '选择一个种子查看详情'"
             />
             <div v-if="torrent" class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs sm:text-sm text-slate-500 mt-1">
+              <span
+                v-if="stateMeta"
+                class="torrent-detail-state inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium"
+                :class="[stateMeta.bgClass, stateMeta.textClass]"
+              >
+                <Icon :name="stateMeta.icon" :color="stateMeta.color" :size="12" />
+                <span>{{ stateMeta.label }}</span>
+              </span>
               <span>{{ formatBytes(torrent.size) }}</span>
               <span>进度 {{ (torrent.progress * 100).toFixed(1) }}%</span>
               <span class="hidden sm:inline">比率 {{ torrent.ratio.toFixed(2) }}</span>
@@ -1291,8 +1303,11 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
           </div>
         </div>
 
+      </div>
+
+      <div class="torrent-detail-controls">
         <!-- Tab 切换 -->
-        <nav class="flex gap-1 p-1 bg-slate-100 rounded-lg overflow-x-auto max-w-full">
+        <nav class="torrent-detail-tabs flex gap-1 p-1 bg-slate-100 rounded-lg overflow-x-auto max-w-full">
           <button
             v-for="tab in [
               { key: 'overview', label: '概览', icon: 'bar-chart-3' },
@@ -1305,121 +1320,122 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
             @click="activeTab = tab.key"
             :aria-pressed="activeTab === tab.key"
             :class="[
-              'flex items-center gap-2 px-2 sm:px-3 py-1.5 rounded text-sm font-medium transition-colors whitespace-nowrap',
+              'torrent-detail-tab flex items-center gap-2 px-2 py-1.5 rounded text-sm font-medium transition-colors whitespace-nowrap',
               activeTab === tab.key
                 ? 'bg-white text-slate-900 shadow-sm'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
             ]"
           >
             <Icon :name="tab.icon" :size="14" />
-            <span class="hidden sm:inline">{{ tab.label }}</span>
+            <span class="torrent-detail-tab-label">{{ tab.label }}</span>
           </button>
         </nav>
-      </div>
 
-      <!-- 操作按钮 -->
-      <div class="flex items-center gap-2 sm:ml-4">
-        <!-- 暂停/恢复 -->
-        <button
-          v-if="torrent"
-          type="button"
-          @click="handleAction(torrent.state === 'paused' ? 'resume' : 'pause')"
-          class="icon-btn"
-          :aria-label="torrent.state === 'paused' ? '开始种子' : '暂停种子'"
-          :title="torrent.state === 'paused' ? '开始' : '暂停'"
-          :disabled="mutating"
-        >
-          <Icon :name="torrent.state === 'paused' ? 'play' : 'pause'" :size="16" />
-        </button>
+        <!-- 操作按钮 -->
+        <div class="torrent-detail-actions" aria-label="详情面板操作">
+        <div v-if="torrent" class="torrent-detail-action-group">
+          <!-- 暂停/恢复 -->
+          <button
+            type="button"
+            @click="handleAction(torrent.state === 'paused' ? 'resume' : 'pause')"
+            class="icon-btn"
+            :aria-label="torrent.state === 'paused' ? '开始种子' : '暂停种子'"
+            :title="torrent.state === 'paused' ? '开始' : '暂停'"
+            :disabled="mutating"
+          >
+            <Icon :name="torrent.state === 'paused' ? 'play' : 'pause'" :size="16" />
+          </button>
 
-        <!-- 重新汇报 (Reannounce) -->
-        <button
-          v-if="torrent"
-          type="button"
-          @click="handleAction('reannounce')"
-          class="icon-btn"
-          aria-label="重新汇报种子"
-          title="重新汇报"
-          :disabled="mutating"
-        >
-          <Icon name="radio" :size="16" />
-        </button>
+          <!-- 重新汇报 -->
+          <button
+            type="button"
+            @click="handleAction('reannounce')"
+            class="icon-btn"
+            aria-label="重新汇报种子"
+            title="重新汇报"
+            :disabled="mutating"
+          >
+            <Icon name="radio" :size="16" />
+          </button>
 
-        <!-- 重新校验 -->
-        <button
-          v-if="torrent"
-          type="button"
-          @click="handleAction('recheck')"
-          class="icon-btn"
-          aria-label="重新校验种子"
-          title="重新校验"
-          :disabled="mutating"
-        >
-          <Icon name="refresh-cw" :size="16" />
-        </button>
+          <!-- 重新校验 -->
+          <button
+            type="button"
+            @click="handleAction('recheck')"
+            class="icon-btn"
+            aria-label="重新校验种子"
+            title="重新校验"
+            :disabled="mutating"
+          >
+            <Icon name="refresh-cw" :size="16" />
+          </button>
 
-        <!-- 强制开始 -->
-        <button
-          v-if="torrent && torrent.state !== 'paused'"
-          type="button"
-          @click="handleAction('forceStart')"
-          class="icon-btn text-amber-600 hover:bg-amber-50 hover:border-amber-200"
-          aria-label="强制开始种子"
-          title="强制开始"
-          :disabled="mutating"
-        >
-          <Icon name="zap" :size="16" />
-        </button>
+          <!-- 强制开始 -->
+          <button
+            v-if="torrent.state !== 'paused'"
+            type="button"
+            @click="handleAction('forceStart')"
+            class="icon-btn text-amber-600 hover:bg-amber-50 hover:border-amber-200"
+            aria-label="强制开始种子"
+            title="强制开始"
+            :disabled="mutating"
+          >
+            <Icon name="zap" :size="16" />
+          </button>
+        </div>
 
-        <!-- 移动位置 -->
-        <button
-          v-if="torrent"
-          type="button"
-          @click="handleSetLocation"
-          class="icon-btn"
-          aria-label="移动保存位置"
-          title="移动位置"
-          :disabled="mutating"
-        >
-          <Icon name="folder-open" :size="16" />
-        </button>
+        <div class="torrent-detail-action-group">
+          <!-- 移动位置 -->
+          <button
+            v-if="torrent"
+            type="button"
+            @click="handleSetLocation"
+            class="icon-btn"
+            aria-label="移动保存位置"
+            title="移动位置"
+            :disabled="mutating"
+          >
+            <Icon name="folder-open" :size="16" />
+          </button>
 
-        <!-- 单种子限速 -->
-        <button
-          v-if="torrent"
-          type="button"
-          @click="openLimitDialog"
-          class="icon-btn"
-          aria-label="编辑单种子限速"
-          title="单种子限速"
-          :disabled="mutating"
-        >
-          <Icon name="sliders" :size="16" />
-        </button>
+          <!-- 单种子限速 -->
+          <button
+            v-if="torrent"
+            type="button"
+            @click="openLimitDialog"
+            class="icon-btn"
+            aria-label="编辑单种子限速"
+            title="单种子限速"
+            :disabled="mutating"
+          >
+            <Icon name="sliders" :size="16" />
+          </button>
 
-        <!-- 重命名（qB） -->
-        <button
-          v-if="torrent && canRenameTorrent"
-          type="button"
-          @click="handleRenameTorrent"
-          class="icon-btn"
-          aria-label="重命名种子"
-          title="重命名"
-          :disabled="mutating"
-        >
-          <Icon name="edit-2" :size="16" />
-        </button>
+          <!-- 重命名（qB） -->
+          <button
+            v-if="torrent && canRenameTorrent"
+            type="button"
+            @click="handleRenameTorrent"
+            class="icon-btn"
+            aria-label="重命名种子"
+            title="重命名"
+            :disabled="mutating"
+          >
+            <Icon name="edit-2" :size="16" />
+          </button>
 
-        <!-- 关闭 -->
-        <button
-          type="button"
-          @click="emit('close')"
-          class="icon-btn"
-          aria-label="关闭详情面板"
-          title="关闭详情面板"
-        >
-          <Icon name="x" :size="16" />
-        </button>
+          <!-- 关闭 -->
+          <button
+            type="button"
+            @click="emit('close')"
+            class="icon-btn"
+            aria-label="关闭详情面板"
+            title="关闭详情面板"
+          >
+            <Icon name="x" :size="16" />
+          </button>
+        </div>
+        </div>
       </div>
     </div>
 
@@ -2408,6 +2424,96 @@ async function handlePriorityChange(node: FileTreeNode, raw: string) {
 </template>
 
 <style scoped>
+/* 头部按详情面板自身宽度渐进布局，避免受页面全局断点和侧栏宽度影响。 */
+.torrent-detail-panel {
+  container: torrent-detail / inline-size;
+}
+
+.torrent-detail-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.torrent-detail-info-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.torrent-detail-info {
+  flex: 1 1 auto;
+}
+
+.torrent-detail-tabs {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.torrent-detail-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.torrent-detail-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+  width: max-content;
+  max-width: 100%;
+}
+
+.torrent-detail-action-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: max-content;
+  max-width: 100%;
+}
+
+/* 中等宽度：标题信息保持独占第一排，Tab 和纯图标操作区共用第二排。 */
+@container torrent-detail (max-width: 960px) {
+  .torrent-detail-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* 更窄时：第二排的 Tab 和功能按钮分别占一排。 */
+@container torrent-detail (max-width: 700px) {
+  .torrent-detail-controls {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .torrent-detail-tabs,
+  .torrent-detail-actions {
+    align-self: flex-start;
+  }
+}
+
+/* 最窄时：功能按钮内部的两组继续分别占一排。 */
+@container torrent-detail (max-width: 420px) {
+  .torrent-detail-actions {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .torrent-detail-tab-label {
+    display: none;
+  }
+
+  .torrent-detail-tab {
+    gap: 0;
+    padding-inline: 0.5rem;
+  }
+}
+
 /* 确保拖拽调整时有合适的视觉反馈 */
 .cursor-ns-resize {
   cursor: ns-resize;
