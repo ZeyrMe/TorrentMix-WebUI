@@ -1,126 +1,112 @@
-# Deployment
+# Deploy TorrentMix WebUI
 
-This document is for people deploying TorrentMix WebUI. In normal use, download a built artifact from GitHub Releases; Node, pnpm, and Rust are not required.
+This guide is for users deploying TorrentMix. A normal deployment does not require Node.js, pnpm, or Rust; download the appropriate artifact from [GitHub Releases](https://github.com/ZeyrMe/TorrentMix-WebUI/releases/latest).
 
-The repository provides four forms:
+If qBittorrent or Transmission is already running and you only need its WebUI files, start with [static package deployment](#static-package). If TorrentMix should host the UI, manage multiple backends, and proxy API requests, use the Standalone Docker deployment below.
 
-| Form | Best for | Direct artifact |
-| --- | --- | --- |
-| **A. Loader** | A single entry file that follows remote releases | `loader.html` |
-| **B. Standalone** | The UI, proxy, and server catalog in one service | Linux x64 bundle / Docker image archive |
-| **C. Sidecar** | An existing backend that needs automatic WebUI updates | `updater.mjs` / Docker image archive |
-| **D. Dist** | Offline, private-network, or manual installs | `dist.zip` |
+## Recommended: Standalone Docker
 
-Use **D** for a manual install into an existing backend, **C** when that install should update automatically, **B** when the UI and proxy should run together, and **A** when a small remote-following entrypoint is enough.
+Standalone is a single service that hosts the WebUI, stores the backend catalog, and proxies requests to the selected qBittorrent or Transmission instance. It is the simplest option to upgrade and roll back.
 
-## Release downloads
+### Requirements
 
-These URLs point to the latest release. Replace `latest` with a tag such as `v0.1.0` when you need a fixed version.
+- Docker Engine 24+ or Docker Desktop;
+- `curl`, `gzip`, and `openssl` for the install commands below;
+- the current Release archives are `linux/amd64`; ARM hosts need Docker emulation, or should use the static package / Node Sidecar;
+- the host must be able to reach the qBittorrent or Transmission endpoints you configure.
 
-```text
-Release page:
-https://github.com/ZeyrMe/TorrentMix-WebUI/releases/latest
+### Install
 
-Loader:
-https://github.com/ZeyrMe/TorrentMix-WebUI/releases/latest/download/loader.html
-
-Dist:
-https://github.com/ZeyrMe/TorrentMix-WebUI/releases/latest/download/dist.zip
-
-Sidecar script:
-https://github.com/ZeyrMe/TorrentMix-WebUI/releases/latest/download/updater.mjs
-```
-
-## A. Loader
-
-Loader is useful when the backend can serve one writable WebUI file and the browser can reach a release source.
+The following commands keep the configuration volume and database key in explicit locations. Generate the key once; keep using the same file for upgrades and restores.
 
 ```bash
-curl -fL -o loader.html \
-  https://github.com/ZeyrMe/TorrentMix-WebUI/releases/latest/download/loader.html
-mv loader.html index.html
-```
+mkdir -p /opt/torrentmix
+cd /opt/torrentmix
 
-Put `index.html` in the qBittorrent or Transmission WebUI directory and open it through the backend. Loader reads `latest.json`, then loads the matching JS, CSS, and fonts.
-
-Pin a version with `?ver=0.1.0` or `?tag=v0.1.0`. A `config.json` beside `index.html` can override the update source:
-
-```json
-{
-  "latestUrl": "https://YOUR-DOMAIN/latest.json",
-  "pinnedVersion": "0.1.0"
-}
-```
-
-Loader is not suitable for a fully offline setup and should only point to a release source you trust.
-
-## B. Standalone
-
-Standalone Service serves the WebUI and proxies backend APIs from one port:
-
-- `/api/*` proxies qBittorrent;
-- `/transmission/*` proxies Transmission;
-- `/__standalone__/status` shows the server catalog;
-- `/__standalone__/config` edits the server catalog.
-
-The catalog is stored in an encrypted SQLCipher database. On first start, open the UI and add qBittorrent or Transmission under **Switch Server -> Manage Servers**.
-
-### B1. Linux x64 bundle
-
-The Release asset `torrentmix-standalone-service-v<VERSION>-linux-amd64.tar.gz` contains both the binary and WebUI:
-
-```bash
-VERSION=0.1.0
-curl -fL -o standalone.tar.gz \
-  "https://github.com/ZeyrMe/TorrentMix-WebUI/releases/download/v${VERSION}/torrentmix-standalone-service-v${VERSION}-linux-amd64.tar.gz"
-tar -xzf standalone.tar.gz
-cd "torrentmix-standalone-service-v${VERSION}-linux-amd64"
-mkdir -p data
-
-STANDALONE_DB="$PWD/data/catalog.db" \
-TORRENTMIX_DB_KEY='replace-with-a-long-random-string' \
-STATIC_DIR="$PWD/dist" \
-./standalone-service
-```
-
-This bundle currently targets Linux x64. Use the Docker archive on other platforms, or build from source for an unsupported target.
-
-### B2. Docker image archive
-
-The Release includes an importable Docker image archive:
-
-```bash
 VERSION=0.1.0
 curl -fL -o standalone-image.tar.gz \
   "https://github.com/ZeyrMe/TorrentMix-WebUI/releases/download/v${VERSION}/torrentmix-standalone-service-v${VERSION}-docker-linux-amd64.tar.gz"
 gzip -dc standalone-image.tar.gz | docker load
 
-docker run -d --name torrentmix-standalone -p 8080:8080 \
-  -e TORRENTMIX_DB_KEY='replace-with-a-long-random-string' \
-  -v torrentmix-catalog:/config \
+if [ ! -f .env ]; then
+  printf 'TORRENTMIX_DB_KEY=%s\n' "$(openssl rand -hex 32)" > .env
+  chmod 600 .env
+fi
+
+docker volume create torrentmix-config
+docker run -d \
+  --name torrentmix-standalone \
+  --restart unless-stopped \
+  --env-file /opt/torrentmix/.env \
+  -p 8080:8080 \
+  -v torrentmix-config:/config \
   "torrentmix-standalone-service:${VERSION}"
 ```
 
-The archive currently targets Linux amd64. `/config` is persistent storage for the catalog. Keep both the volume and `TORRENTMIX_DB_KEY` when upgrading.
+Open `http://localhost:8080`, then use **Switch server → Manage servers** to add the first backend. The container must be able to reach that backend; if the backend runs outside Docker, configure an address reachable from the container.
 
-### B3. Configuration and updates
+### Upgrade and rollback
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `LISTEN_ADDR` | `:8080` | Listen address |
-| `STATIC_DIR` | `/app/dist` | Static WebUI directory |
-| `STANDALONE_DB` | `/config/catalog.db` | SQLCipher catalog path |
-| `TORRENTMIX_DB_KEY` | none | SQLCipher master key; required for containers |
+Replace the image without deleting the `torrentmix-config` volume or regenerating `.env`:
 
-For a binary update, replace the executable and `dist/` while keeping `data/catalog.db`. For Docker, load the target archive and recreate the container with the same volume. Roll back by downloading the desired tag.
+```bash
+cd /opt/torrentmix
+VERSION=0.1.1
+curl -fL -o standalone-image.tar.gz \
+  "https://github.com/ZeyrMe/TorrentMix-WebUI/releases/download/v${VERSION}/torrentmix-standalone-service-v${VERSION}-docker-linux-amd64.tar.gz"
+gzip -dc standalone-image.tar.gz | docker load
+docker stop torrentmix-standalone
+docker rm torrentmix-standalone
+docker run -d \
+  --name torrentmix-standalone \
+  --restart unless-stopped \
+  --env-file /opt/torrentmix/.env \
+  -p 8080:8080 \
+  -v torrentmix-config:/config \
+  "torrentmix-standalone-service:${VERSION}"
+```
 
-## C. Sidecar
+Roll back by repeating the same commands with the desired version. The database and key must remain paired.
 
-Sidecar does not listen on an HTTP port or proxy requests. It updates the WebUI directory used by the backend, so both containers or processes must mount the same directory.
+### Back up the configuration
 
-### C1. Node script
+Back up both `/opt/torrentmix/.env` and the `torrentmix-config` volume. For example:
 
-The Release provides `updater.mjs` directly. The script requires Node.js 20+ and the system `unzip` command; pnpm and Rust are not required:
+```bash
+docker run --rm \
+  -v torrentmix-config:/config \
+  -v "$PWD":/backup \
+  alpine:3.20 \
+  tar czf /backup/torrentmix-config.tar.gz -C /config .
+```
+
+Stop Standalone before restoring the archive, restore it into the same volume, and keep the original `.env`.
+
+## Other deployment methods
+
+### Static package
+
+Use the static package when qBittorrent or Transmission already serves the WebUI directory. It does not proxy requests or manage backend settings.
+
+```bash
+mkdir -p /path/to/backend/webui
+curl -fL -o dist.zip \
+  https://github.com/ZeyrMe/TorrentMix-WebUI/releases/latest/download/dist.zip
+unzip -o dist.zip -d /path/to/backend/webui
+```
+
+After extraction, `/path/to/backend/webui/index.html` must exist directly at the directory root. Do not open it with `file://`; serve it through the backend or another HTTP server.
+
+- qBittorrent: enable **Alternative WebUI** and point it to this directory;
+- Transmission: use `--web-home` or the equivalent setting.
+
+To update, download the desired `dist.zip` and extract it over the same directory. Replace `latest` with a tag such as `v0.1.0` to roll back.
+
+### Sidecar updater
+
+Use Sidecar when an existing backend should update its WebUI automatically without adding a proxy service. Sidecar only installs `dist.zip`; qBittorrent / Transmission still manage the backend itself.
+
+The Node script requires Node.js 20+ and the system `unzip` command:
 
 ```bash
 mkdir -p /opt/torrentmix-sidecar
@@ -134,16 +120,39 @@ CHECK_INTERVAL_SEC=3600 \
 node updater.mjs
 ```
 
-Set `CHECK_INTERVAL_SEC=0` for a one-shot update. Use systemd, supervisord, or a container manager for a long-running process. Temporary files go to `/tmp/webui-sidecar` by default; set `TMP_ROOT` to a writable directory with enough space if needed.
+Set `CHECK_INTERVAL_SEC=0` for a one-shot update. For a long-running process, use systemd, supervisord, or a container manager. Sidecar and the backend must share the same WebUI directory; updating the wrong directory has no effect on the page being served.
 
-### C2. Docker image archive
+For example, run the Node script with systemd:
+
+```ini
+# /etc/systemd/system/torrentmix-sidecar.service
+[Unit]
+Description=TorrentMix WebUI Sidecar
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/opt/torrentmix-sidecar
+Environment=LATEST_URL=https://zeyrme.github.io/TorrentMix-WebUI/latest.json
+Environment=TARGET_DIR=/path/to/backend/webui
+Environment=CHECK_INTERVAL_SEC=3600
+ExecStart=/usr/bin/node /opt/torrentmix-sidecar/updater.mjs
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Then run `sudo systemctl daemon-reload && sudo systemctl enable --now torrentmix-sidecar`.
+
+The Release also includes an importable Docker archive:
 
 ```bash
 VERSION=0.1.0
 curl -fL -o sidecar-image.tar.gz \
   "https://github.com/ZeyrMe/TorrentMix-WebUI/releases/download/v${VERSION}/torrentmix-sidecar-v${VERSION}-docker-linux-amd64.tar.gz"
 gzip -dc sidecar-image.tar.gz | docker load
-
 docker run --rm \
   -e LATEST_URL=https://zeyrme.github.io/TorrentMix-WebUI/latest.json \
   -e CHECK_INTERVAL_SEC=3600 \
@@ -151,53 +160,35 @@ docker run --rm \
   "torrentmix-sidecar:${VERSION}"
 ```
 
-`/target` must be the directory actually served by the backend. The Sidecar image does not include qBittorrent or Transmission.
+### Loader
 
-### C3. Connect the backend
-
-- **qBittorrent:** enable *Alternative WebUI* and point it at the shared directory. With Docker, mount the same named volume into qBittorrent and Sidecar.
-- **Transmission:** use `--web-home` or the equivalent setting to point at the shared directory.
-
-The install sequence is download, SHA-256 verification, extraction into a temporary directory, root `index.html` validation, and target update. Failed verification or an invalid archive leaves the current page in place.
-
-## D. Dist
-
-Dist is the simplest manual install:
+Use Loader when the backend can serve one WebUI file and the browser can reach the release source. Loader does not contain the full application; it loads the remote version described by `latest.json`.
 
 ```bash
-mkdir -p /path/to/backend/webui
-curl -fL -o dist.zip \
-  https://github.com/ZeyrMe/TorrentMix-WebUI/releases/latest/download/dist.zip
-unzip -o dist.zip -d /path/to/backend/webui
+curl -fL -o /path/to/backend/webui/index.html \
+  https://github.com/ZeyrMe/TorrentMix-WebUI/releases/latest/download/loader.html
 ```
 
-The archive root already contains `index.html`. Repeat the download and extraction to update; use a fixed tag to roll back. Serve the directory through qBittorrent, Transmission, or another HTTP server instead of opening it with `file://`.
+Loader follows the latest release. Pin a version with `?ver=0.1.0` or `?tag=v0.1.0`. Because it loads remote scripts, use it only with a release source you trust; it is not suitable for fully offline deployments.
 
-## Docker archives
+## Troubleshooting
 
-The current Release provides Linux amd64 Docker archives. Import them with:
+### Blank page or 404 assets
 
-```bash
-gzip -dc image.tar.gz | docker load
-```
+Make sure the page is served over HTTP by qBittorrent, Transmission, Standalone, or another web server. For a static package, verify that `index.html` is at the WebUI directory root.
 
-They do not depend on Docker Hub or a registry login. If a source build reports `TLS handshake timeout`, Docker usually could not reach a base image; importing a Release archive avoids that build step.
+### Standalone cannot unlock its catalog
+
+Check that the container still uses the `.env` generated during the first install. Changing `TORRENTMIX_DB_KEY` makes the existing database unreadable.
+
+### Sidecar reports success but the backend page is unchanged
+
+Check that `TARGET_DIR` is the directory actually served by the backend and that Sidecar and the backend mount the same directory or named volume.
+
+### Docker archive will not load
+
+Check that Docker is running, the download is complete, and the host architecture is supported. The current archives are `linux/amd64`; use a static package or Sidecar if amd64 emulation is unavailable.
 
 ## Build from source
 
-Source builds are for development and unsupported platforms, not a normal deployment prerequisite:
-
-```bash
-pnpm install
-pnpm build
-cargo build --manifest-path rust/Cargo.toml --release -p standalone-service
-```
-
-## Artifact map
-
-| Form | Entry |
-| --- | --- |
-| A. Loader | Release `loader.html` or Pages `/loader.html` |
-| B. Standalone | `*-linux-amd64.tar.gz` or `*-docker-linux-amd64.tar.gz` |
-| C. Sidecar | Release `updater.mjs` or `*-docker-linux-amd64.tar.gz` |
-| D. Dist | Release `dist.zip` or the versioned Pages directory |
+Build from source only for development or platforms without a prebuilt artifact. For normal deployment, use the Release downloads above. Development commands are documented in `AGENTS.md` and the individual deployment directories.

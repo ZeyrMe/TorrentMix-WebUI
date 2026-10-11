@@ -1,136 +1,117 @@
-# 部署方式
+# 部署 TorrentMix WebUI
 
-这是一份面向部署者的说明。正常使用时，应优先从 GitHub Release 下载已经构建好的产物，不需要安装 Node、pnpm 或 Rust。
+这是一份面向使用者的部署说明。正常部署不需要安装 Node.js、pnpm 或 Rust；从 [GitHub Releases](https://github.com/ZeyrMe/TorrentMix-WebUI/releases/latest) 下载对应产物即可。
 
-仓库目前提供四种分发方式：
+如果你只是想把 WebUI 接到已经运行的 qBittorrent 或 Transmission，先看[静态包部署](#静态包部署)。如果希望由 TorrentMix 同时托管页面、管理多个后端并代理 API，使用下面的 Standalone Docker 部署。
 
-| 方式 | 适合场景 | 直接可取得的产物 |
-| --- | --- | --- |
-| **A. Loader** | 放一个入口文件，自动跟随远端发布 | `loader.html` |
-| **B. Standalone** | 页面、代理和服务器列表由一个服务管理 | Linux x64 压缩包 / Docker 镜像归档 |
-| **C. Sidecar** | 已经有后端，只自动更新 WebUI 文件 | `updater.mjs` / Docker 镜像归档 |
-| **D. Dist** | 离线、内网或手动更新 | `dist.zip` |
+## 推荐：Standalone Docker
 
-简单选择：已有后端、手动部署用 **D**；已有后端、希望自动更新用 **C**；想让页面和代理一起运行用 **B**；只想放一个入口文件并跟随线上版本用 **A**。
+Standalone 是一个独立服务：它提供 WebUI、保存后端目录，并把浏览器请求代理到选中的 qBittorrent 或 Transmission。它适合新部署，也最容易升级和回滚。
 
-## Release 下载地址
+### 环境要求
 
-下面的地址指向最新版。需要固定版本时，把 `latest` 换成 tag，例如 `v0.1.0`。
+- Docker Engine 24+，或 Docker Desktop；
+- 安装命令需要 `curl`、`gzip` 和 `openssl`；
+- 当前 Release 提供 `linux/amd64` 镜像归档；ARM 主机需要 Docker 仿真，或者改用静态包 / Node Sidecar；
+- 主机能够访问你配置的 qBittorrent / Transmission 地址。
 
-```text
-Release 页面：
-https://github.com/ZeyrMe/TorrentMix-WebUI/releases/latest
+### 安装
 
-Loader：
-https://github.com/ZeyrMe/TorrentMix-WebUI/releases/latest/download/loader.html
-
-Dist：
-https://github.com/ZeyrMe/TorrentMix-WebUI/releases/latest/download/dist.zip
-
-Sidecar 脚本：
-https://github.com/ZeyrMe/TorrentMix-WebUI/releases/latest/download/updater.mjs
-```
-
-## A. Loader
-
-Loader 适合“后端只提供一个可写的 WebUI 目录，但希望以后自动跟随发布”的情况。
+下面的命令把配置卷、主密钥和容器都放在明确的位置。主密钥只生成一次，之后升级和恢复备份都必须继续使用同一个文件。
 
 ```bash
-curl -fL -o loader.html \
-  https://github.com/ZeyrMe/TorrentMix-WebUI/releases/latest/download/loader.html
-mv loader.html index.html
-```
+mkdir -p /opt/torrentmix
+cd /opt/torrentmix
 
-把 `index.html` 放入 qBittorrent 或 Transmission 的 WebUI 目录后，通过后端访问页面。Loader 会读取发布源的 `latest.json`，再加载对应的 JS、CSS 和字体文件。
-
-需要固定版本时，可以使用：
-
-```text
-?ver=0.1.0
-或
-?tag=v0.1.0
-```
-
-也可以在 `index.html` 同目录放置 `config.json`：
-
-```json
-{
-  "latestUrl": "https://YOUR-DOMAIN/latest.json",
-  "pinnedVersion": "0.1.0"
-}
-```
-
-Loader 需要浏览器能够访问发布源，不适合完全离线环境。它会加载远端脚本，只应指向自己信任的发布源。
-
-## B. Standalone
-
-Standalone Service 会在同一个端口上托管 WebUI，并代理后端 API：
-
-- `/api/*` 代理 qBittorrent；
-- `/transmission/*` 代理 Transmission；
-- `/__standalone__/status` 查看当前服务器目录；
-- `/__standalone__/config` 编辑服务器目录。
-
-服务器目录保存在加密的 SQLCipher 数据库中。第一次启动时，打开页面后进入“切换服务器 → 管理服务器”添加 qBittorrent 或 Transmission。
-
-### B1. Linux x64 压缩包
-
-Release 中的 `torrentmix-standalone-service-v<VERSION>-linux-amd64.tar.gz` 已经包含二进制和 WebUI，Linux x64 主机不需要 Rust：
-
-```bash
-VERSION=0.1.0
-curl -fL -o standalone.tar.gz \
-  "https://github.com/ZeyrMe/TorrentMix-WebUI/releases/download/v${VERSION}/torrentmix-standalone-service-v${VERSION}-linux-amd64.tar.gz"
-tar -xzf standalone.tar.gz
-cd "torrentmix-standalone-service-v${VERSION}-linux-amd64"
-mkdir -p data
-
-STANDALONE_DB="$PWD/data/catalog.db" \
-TORRENTMIX_DB_KEY='replace-with-a-long-random-string' \
-STATIC_DIR="$PWD/dist" \
-./standalone-service
-```
-
-保持 `TORRENTMIX_DB_KEY` 不变。升级时替换程序和 `dist/`，保留 `data/catalog.db`；回滚时下载目标版本的压缩包即可。
-
-### B2. Docker 镜像归档
-
-Release 中的 Docker 归档可以直接导入，不需要重新执行 Dockerfile：
-
-```bash
 VERSION=0.1.0
 curl -fL -o standalone-image.tar.gz \
   "https://github.com/ZeyrMe/TorrentMix-WebUI/releases/download/v${VERSION}/torrentmix-standalone-service-v${VERSION}-docker-linux-amd64.tar.gz"
 gzip -dc standalone-image.tar.gz | docker load
 
-docker run -d --name torrentmix-standalone -p 8080:8080 \
-  -e TORRENTMIX_DB_KEY='replace-with-a-long-random-string' \
-  -v torrentmix-catalog:/config \
+if [ ! -f .env ]; then
+  printf 'TORRENTMIX_DB_KEY=%s\n' "$(openssl rand -hex 32)" > .env
+  chmod 600 .env
+fi
+
+docker volume create torrentmix-config
+docker run -d \
+  --name torrentmix-standalone \
+  --restart unless-stopped \
+  --env-file /opt/torrentmix/.env \
+  -p 8080:8080 \
+  -v torrentmix-config:/config \
   "torrentmix-standalone-service:${VERSION}"
 ```
 
-镜像归档目前是 Linux amd64 版本。`/config` 是数据库所在的持久化卷，删除它会连同服务器目录一起删除。修改服务器配置时不需要进入容器，直接在 WebUI 的管理面板操作即可。
+打开 `http://localhost:8080`，进入“切换服务器 → 管理服务器”，添加第一个后端。Standalone 容器需要能够访问后端；如果后端也运行在 Docker 外部，按你的 Docker 环境把后端地址配置为容器可访问的地址。
 
-### B3. 配置和更新
+### 升级和回滚
 
-常用环境变量：
+升级时只替换镜像，不要删除 `torrentmix-config` 卷，也不要重新生成 `.env`：
 
-| 变量 | 默认值 | 用途 |
-| --- | --- | --- |
-| `LISTEN_ADDR` | `:8080` | Standalone 监听地址 |
-| `STATIC_DIR` | `/app/dist` | WebUI 目录；二进制部署时指向压缩包内的 `dist/` |
-| `STANDALONE_DB` | `/config/catalog.db` | SQLCipher 数据库路径 |
-| `TORRENTMIX_DB_KEY` | 无 | SQLCipher 主密钥，容器部署必须设置 |
+```bash
+cd /opt/torrentmix
+VERSION=0.1.1
+curl -fL -o standalone-image.tar.gz \
+  "https://github.com/ZeyrMe/TorrentMix-WebUI/releases/download/v${VERSION}/torrentmix-standalone-service-v${VERSION}-docker-linux-amd64.tar.gz"
+gzip -dc standalone-image.tar.gz | docker load
+docker stop torrentmix-standalone
+docker rm torrentmix-standalone
+docker run -d \
+  --name torrentmix-standalone \
+  --restart unless-stopped \
+  --env-file /opt/torrentmix/.env \
+  -p 8080:8080 \
+  -v torrentmix-config:/config \
+  "torrentmix-standalone-service:${VERSION}"
+```
 
-数据库和主密钥是一对。保留数据库时必须保留原主密钥，不能用新值覆盖。
+回滚就是用目标版本的归档重复这组命令。数据库和主密钥必须配对，否则服务无法解锁配置库。
 
-## C. Sidecar
+### 备份
 
-Sidecar 不监听 HTTP 端口，也不负责代理。它只把发布的 `dist.zip` 更新到后端正在使用的 WebUI 目录。Sidecar 与后端必须挂载同一个目录。
+至少备份下面两个东西：
 
-### C1. Node 脚本
+- `/opt/torrentmix/.env`；
+- `torrentmix-config` Docker volume。
 
-Release 直接提供 `updater.mjs`。脚本运行需要 Node.js 20+ 和系统 `unzip` 命令；不需要 pnpm 或 Rust：
+例如把配置卷导出到当前目录：
+
+```bash
+docker run --rm \
+  -v torrentmix-config:/config \
+  -v "$PWD":/backup \
+  alpine:3.20 \
+  tar czf /backup/torrentmix-config.tar.gz -C /config .
+```
+
+恢复时，先停止 Standalone，再把备份内容解压回同一个卷，并继续使用原来的 `.env`。
+
+## 其他部署方式
+
+### 静态包部署
+
+静态包适合已经运行 qBittorrent 或 Transmission、只需要替换 WebUI 文件的场景。它不提供代理，也不管理后端配置。
+
+```bash
+mkdir -p /path/to/backend/webui
+curl -fL -o dist.zip \
+  https://github.com/ZeyrMe/TorrentMix-WebUI/releases/latest/download/dist.zip
+unzip -o dist.zip -d /path/to/backend/webui
+```
+
+解压后，`/path/to/backend/webui/index.html` 应该直接存在。不要用 `file://` 打开目录，页面必须由后端或其他 HTTP 服务托管。
+
+- qBittorrent：启用 **Alternative WebUI**，把路径指向这个目录；
+- Transmission：使用 `--web-home` 或对应配置项指向这个目录。
+
+更新时下载目标版本的 `dist.zip`，解压覆盖同一个目录。需要回滚时，把 `latest` 换成固定 tag，例如 `v0.1.0`。
+
+### Sidecar 自动更新
+
+Sidecar 适合不想增加代理服务、但希望已有后端自动更新 WebUI 的场景。它只负责把 `dist.zip` 安装到后端正在使用的目录，后端本身仍由 qBittorrent / Transmission 管理。
+
+Node 版本需要 20+，系统还需要 `unzip` 命令：
 
 ```bash
 mkdir -p /opt/torrentmix-sidecar
@@ -144,16 +125,39 @@ CHECK_INTERVAL_SEC=3600 \
 node updater.mjs
 ```
 
-`CHECK_INTERVAL_SEC=0` 表示只更新一次。长期运行时，把这条命令交给 systemd、supervisord 或其他进程管理器。临时文件默认放在 `/tmp/webui-sidecar`，可以通过 `TMP_ROOT` 改到有足够空间且可写的目录。
+`CHECK_INTERVAL_SEC=0` 只执行一次。长期运行时，把命令交给 systemd、supervisord 或容器管理器。Sidecar 和后端必须共享同一个 WebUI 目录；目录不对时，更新成功也不会影响实际页面。
 
-### C2. Docker 镜像归档
+例如使用 systemd 长期运行 Node 脚本：
+
+```ini
+# /etc/systemd/system/torrentmix-sidecar.service
+[Unit]
+Description=TorrentMix WebUI Sidecar
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/opt/torrentmix-sidecar
+Environment=LATEST_URL=https://zeyrme.github.io/TorrentMix-WebUI/latest.json
+Environment=TARGET_DIR=/path/to/backend/webui
+Environment=CHECK_INTERVAL_SEC=3600
+ExecStart=/usr/bin/node /opt/torrentmix-sidecar/updater.mjs
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+保存后执行 `sudo systemctl daemon-reload && sudo systemctl enable --now torrentmix-sidecar`。
+
+也可以直接导入 Release 提供的 Docker 归档：
 
 ```bash
 VERSION=0.1.0
 curl -fL -o sidecar-image.tar.gz \
   "https://github.com/ZeyrMe/TorrentMix-WebUI/releases/download/v${VERSION}/torrentmix-sidecar-v${VERSION}-docker-linux-amd64.tar.gz"
 gzip -dc sidecar-image.tar.gz | docker load
-
 docker run --rm \
   -e LATEST_URL=https://zeyrme.github.io/TorrentMix-WebUI/latest.json \
   -e CHECK_INTERVAL_SEC=3600 \
@@ -161,59 +165,35 @@ docker run --rm \
   "torrentmix-sidecar:${VERSION}"
 ```
 
-容器归档目前是 Linux amd64 版本。`/target` 必须是后端实际提供页面的目录，Sidecar 容器本身不包含 qBittorrent 或 Transmission。
+### Loader
 
-### C3. 接入后端
-
-- **qBittorrent**：启用 *Alternative WebUI*，并把 WebUI 路径指向共享目录。Docker 部署时，让 qBittorrent 容器和 Sidecar 容器挂载同一个 named volume。
-- **Transmission**：使用 `--web-home` 或对应配置项，把 WebUI 路径指向共享目录。
-
-Sidecar 的安装顺序是“下载 → 校验 SHA-256 → 解压到临时目录 → 检查根目录 `index.html` → 更新目标目录”。校验失败或压缩包结构不对时，会保留当前页面。
-
-## D. Dist
-
-Dist 是最直接的手动安装方式：
+Loader 只适合“后端能提供一个 WebUI 目录，并且浏览器可以访问发布源”的场景。它本身不包含完整页面，而是从 `latest.json` 加载远端资源。
 
 ```bash
-mkdir -p /path/to/backend/webui
-curl -fL -o dist.zip \
-  https://github.com/ZeyrMe/TorrentMix-WebUI/releases/latest/download/dist.zip
-unzip -o dist.zip -d /path/to/backend/webui
+curl -fL -o /path/to/backend/webui/index.html \
+  https://github.com/ZeyrMe/TorrentMix-WebUI/releases/latest/download/loader.html
 ```
 
-压缩包根目录直接包含 `index.html`，不需要再移动一层目录。更新时重复下载并解压即可；需要回滚时下载固定 tag 的 `dist.zip`。
+Loader 会跟随最新版；需要固定版本时，在 URL 上使用 `?ver=0.1.0` 或 `?tag=v0.1.0`。由于它会加载远端脚本，只应连接自己信任的发布源，也不适合完全离线环境。
 
-不要直接用 `file://` 打开解压后的目录，页面需要由 qBittorrent、Transmission 或其他 HTTP 服务托管。
+## 常见问题
 
-## Docker 归档说明
+### 页面空白或资源 404
 
-当前 Release 提供的是 Linux amd64 Docker 归档，使用方式是：
+确认页面是通过 qBittorrent、Transmission、Standalone 或其他 HTTP 服务访问的，而不是双击 `index.html`。静态包解压后还应确认 `index.html` 位于 WebUI 目录根部。
 
-```bash
-gzip -dc image.tar.gz | docker load
-```
+### Standalone 启动后无法解锁配置
 
-它不是 Docker Hub 镜像，因此不会因为 registry 登录或镜像源配置而无法使用。之后如果发布多架构镜像，会在文件名中明确标出平台。
+检查容器使用的 `.env` 是否还是第一次启动时生成的文件。更换 `TORRENTMIX_DB_KEY` 会让原来的数据库无法解密。
 
-如果下载或导入失败，先检查：磁盘空间、Docker 是否正在运行、下载文件是否完整，以及 `docker load` 的错误信息。`TLS handshake timeout` 出现在源码构建时，通常表示 Docker 拉取基础镜像的网络问题；直接导入 Release 归档不需要重新拉取这些基础镜像。
+### Sidecar 显示更新成功，但后端页面没变化
+
+检查 `TARGET_DIR` 是否就是后端实际提供页面的目录，并确认 Sidecar 与后端挂载的是同一个目录或 named volume。
+
+### Docker 归档导入失败
+
+确认 Docker 正在运行、下载文件完整，并检查主机架构。当前归档是 `linux/amd64`；如果主机没有启用 amd64 仿真，应改用静态包或 Sidecar。
 
 ## 从源码构建
 
-源码构建主要面向开发和未覆盖平台，不是普通部署的前置步骤：
-
-```bash
-pnpm install
-pnpm build
-cargo build --manifest-path rust/Cargo.toml --release -p standalone-service
-```
-
-Release、Pages 和上述稳定下载地址才是正常部署入口。
-
-## 产物对应关系
-
-| 形态 | 入口 |
-| --- | --- |
-| A. Loader | Release 的 `loader.html`，或 Pages 的 `/loader.html` |
-| B. Standalone | `*-linux-amd64.tar.gz` 或 `*-docker-linux-amd64.tar.gz` |
-| C. Sidecar | Release 的 `updater.mjs` 或 `*-docker-linux-amd64.tar.gz` |
-| D. Dist | Release 的 `dist.zip`，或 Pages 版本目录中的 `dist.zip` |
+源码构建只用于开发或未提供预构建产物的平台。普通部署请优先使用上面的 Release 下载方式。开发命令见仓库根目录的 `AGENTS.md` 和各部署目录说明。

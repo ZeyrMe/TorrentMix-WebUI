@@ -1,43 +1,36 @@
 # Sidecar Updater
 
-[中文文档](README.zh-CN.md)
+Sidecar is for an existing qBittorrent or Transmission deployment. It reads `latest.json`, downloads and verifies `dist.zip`, and installs it into the WebUI directory served by the backend. It does not listen on an HTTP port or proxy API requests.
 
-Sidecar keeps the WebUI directory used by a backend up to date. It reads `latest.json`, downloads `dist.zip`, verifies SHA-256, and updates the target directory.
+See [`docs/deployment.md`](../../docs/deployment.md) for the complete deployment guide.
 
-Installation only proceeds when:
+## Node script
 
-- `latest.json` contains `release.distZip`;
-- `release.distZipSha256`, when present, matches;
-- the extracted archive root contains `index.html`.
-
-## Installation and usage
-
-### Node script
-
-Releases include `updater.mjs` directly; no checkout is needed. The script requires Node.js 20+ and the system `unzip` command:
+The script requires Node.js 20+ and the system `unzip` command. Releases include `updater.mjs` directly:
 
 ```bash
 mkdir -p /opt/torrentmix-sidecar
 cd /opt/torrentmix-sidecar
 curl -fL -o updater.mjs \
   https://github.com/ZeyrMe/TorrentMix-WebUI/releases/latest/download/updater.mjs
+
 LATEST_URL=https://zeyrme.github.io/TorrentMix-WebUI/latest.json \
 TARGET_DIR=/path/to/backend/webui \
 CHECK_INTERVAL_SEC=3600 \
 node updater.mjs
 ```
 
-Set `CHECK_INTERVAL_SEC=0` for a one-shot update. Use systemd, supervisord, or a container manager for a long-running process.
+Set `CHECK_INTERVAL_SEC=0` for a one-shot update. Use systemd, supervisord, or another process manager for a long-running process.
 
-### Docker image
+## Docker
 
-Releases include an importable amd64 Docker image archive:
+Releases include a Linux amd64 Docker archive:
 
 ```bash
 VERSION=0.1.0
-curl -fL -o torrentmix-sidecar-image.tar.gz \
+curl -fL -o sidecar-image.tar.gz \
   "https://github.com/ZeyrMe/TorrentMix-WebUI/releases/download/v${VERSION}/torrentmix-sidecar-v${VERSION}-docker-linux-amd64.tar.gz"
-gzip -dc torrentmix-sidecar-image.tar.gz | docker load
+gzip -dc sidecar-image.tar.gz | docker load
 docker run --rm \
   -e LATEST_URL=https://zeyrme.github.io/TorrentMix-WebUI/latest.json \
   -e CHECK_INTERVAL_SEC=3600 \
@@ -45,32 +38,13 @@ docker run --rm \
   "torrentmix-sidecar:${VERSION}"
 ```
 
-`/target` must be the directory actually served by the backend. The Sidecar image does not include qBittorrent or Transmission.
-
-### Build from source (development)
-
-Build from source when changing the updater:
-
-```bash
-docker build -t torrentmix-sidecar -f deploy/sidecar/Dockerfile .
-```
-
 ## Environment variables
 
 | Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `LATEST_URL` | yes | — | URL of `latest.json` |
-| `TARGET_DIR` | no | `/target` | WebUI extraction directory |
+| --- | --- | --- | --- |
+| `LATEST_URL` | yes | none | URL of `latest.json` |
+| `TARGET_DIR` | no | `/target` | WebUI installation directory |
 | `CHECK_INTERVAL_SEC` | no | `3600` | Poll interval; `0` runs once |
 | `TMP_ROOT` | no | `/tmp/webui-sidecar` | Temporary download and extraction directory |
 
-If verification or archive-layout checks fail, Sidecar leaves the current target directory unchanged.
-
-## Connect the backend
-
-Sidecar and the backend must share the same WebUI directory:
-
-- **qBittorrent:** enable *Alternative WebUI* and point it at the shared directory.
-- **Transmission:** use `--web-home` or the equivalent setting.
-
-Sidecar only updates files. qBittorrent / Transmission still handle backend URLs, authentication, and API proxying.
+Sidecar and the backend must share the same WebUI directory. qBittorrent must have **Alternative WebUI** enabled; Transmission uses `--web-home` or the equivalent setting. Failed verification or an invalid archive leaves the current directory unchanged.
